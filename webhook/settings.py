@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-!wf6wa7pu&u=9#^6bj2kztp9*nh#dgor=)-nc$u*kpjb^#b#su
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'webhook_app',
 ]
 
 MIDDLEWARE = [
@@ -132,7 +133,7 @@ CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'UTC'
+CELERY_TIMEZONE = 'Asia/Kolkata'
 
 # Rate limiting defaults (deliveries per second, system-wide)
 DEFAULT_RATE_LIMIT = int(os.environ.get('DEFAULT_RATE_LIMIT', '10'))
