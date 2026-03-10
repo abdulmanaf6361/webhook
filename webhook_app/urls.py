@@ -18,5 +18,9 @@ urlpatterns = [
     path('api/webhooks/<uuid:webhook_id>/toggle/', views.webhook_toggle, name='api_webhook_toggle'),
     path('api/webhooks/<uuid:webhook_id>/deliveries/', views.delivery_history, name='api_delivery_history'),
 
-    
+    # ── Event ingestion ────────────────────────────────────────────────────────
+    path('api/events/ingest/', views.ingest_event, name='api_ingest_event'),
+
+    # ── Internal config ────────────────────────────────────────────────────────
+    path('api/internal/rate-limit/', views.rate_limit_config, name='api_rate_limit'),
 ]

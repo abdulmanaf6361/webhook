@@ -277,3 +277,100 @@ def webhook_toggle(request, webhook_id):
     action = 'enabled' if webhook.is_active else 'disabled'
     logger.info(f"Webhook {webhook_id} {action} by user {user_id}")
     return json_success({'message': f'Webhook {action}', 'is_active': webhook.is_active})
+
+
+
+
+
+
+
+
+
+
+
+# ── Event Ingestion API ────────────────────────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def ingest_event(request):
+    """
+    POST /api/events/ingest/
+    Internal endpoint — accepts an event and fans out deliveries.
+    Body: { user_id, event_type, payload }
+    """
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return json_error('Invalid JSON body')
+
+    user_id = body.get('user_id', '').strip()
+    event_type = body.get('event_type', '').strip()
+    payload = body.get('payload', {})
+
+    if not user_id:
+        return json_error('user_id is required')
+    if not event_type:
+        return json_error('event_type is required')
+    if event_type not in VALID_EVENT_TYPES:
+        return json_error(f'Invalid event_type. Valid: {list(VALID_EVENT_TYPES)}')
+    if not isinstance(payload, dict):
+        return json_error('payload must be a JSON object')
+
+    # Persist event
+    event = Event.objects.create(user_id=user_id, event_type=event_type, payload=payload)
+
+    # Fan out to all active webhooks subscribed to this event type
+    matching_webhooks = Webhook.objects.filter(
+        user_id=user_id,
+        is_active=True,
+    )
+    delivery_count = 0
+    for webhook in matching_webhooks:
+        if webhook.subscribes_to(event_type):
+            attempt = DeliveryAttempt.objects.create(webhook=webhook, event=event, status='pending')
+            # Enqueue delivery task
+            from .tasks import deliver_webhook
+            deliver_webhook.delay(str(attempt.id))
+            delivery_count += 1
+
+    logger.info(f"Event {event.id} ({event_type}) ingested for user {user_id}, fanning out to {delivery_count} webhooks")
+    return json_success({
+        'event_id': str(event.id),
+        'event_type': event_type,
+        'user_id': user_id,
+        'deliveries_queued': delivery_count,
+    }, status=201)
+
+
+# ── Rate Limit Config API ──────────────────────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(['GET', 'PUT', 'POST'])
+def rate_limit_config(request):
+    """
+    GET  /api/internal/rate-limit/  — view current rate limit
+    PUT  /api/internal/rate-limit/  — update rate limit
+    """
+    if request.method == 'GET':
+        current = get_rate_limit()
+        return json_success({'deliveries_per_second': current})
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        body = request.POST.dict()
+
+    dps = body.get('deliveries_per_second')
+    if dps is None:
+        return json_error('deliveries_per_second is required')
+    try:
+        dps = int(dps)
+        if dps < 1:
+            raise ValueError()
+    except (TypeError, ValueError):
+        return json_error('deliveries_per_second must be a positive integer')
+
+    set_rate_limit(dps)
+    logger.info(f"Rate limit updated to {dps}/s")
+    return json_success({'deliveries_per_second': dps, 'message': 'Rate limit updated'})
+
