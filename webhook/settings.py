@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/6.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
-
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -124,3 +124,31 @@ STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Celery Configuration
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+
+# Rate limiting defaults (deliveries per second, system-wide)
+DEFAULT_RATE_LIMIT = int(os.environ.get('DEFAULT_RATE_LIMIT', '10'))
+RATE_LIMIT_REDIS_KEY = 'webhook:rate_limit'
+RATE_LIMIT_BUCKET_KEY = 'webhook:rate_bucket'
+
+# Celery Beat schedule
+from datetime import timedelta
+CELERY_BEAT_SCHEDULE = {
+    'process-delivery-queue': {
+        'task': 'webhook_app.tasks.process_delivery_queue',
+        'schedule': timedelta(seconds=1),
+    },
+}
+
+# Fairness queue settings
+FAIRNESS_QUEUE_KEY = 'webhook:fair_queue'
+USER_QUEUE_KEY_PREFIX = 'webhook:user_queue:'
+USER_ACTIVE_KEY = 'webhook:active_users'
