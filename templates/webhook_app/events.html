@@ -1,0 +1,162 @@
+{% extends "webhook_app/base.html" %}
+{% block title %}Publish Event{% endblock %}
+
+{% block content %}
+<div class="user-bar">
+  <label>👤 User ID:</label>
+  <form method="GET" action="/events/" style="display:flex;gap:8px;align-items:center;">
+    <input type="text" name="user_id" value="{{ user_id }}" placeholder="e.g. user_alice" required />
+    <button type="submit" class="btn btn-primary btn-sm">Switch</button>
+  </form>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start">
+
+  <!-- Publish form -->
+  <div>
+    <div class="page-header" style="margin-bottom:1rem">
+      <div class="page-title">Publish Event</div>
+    </div>
+    <div class="card">
+      <div class="form-group">
+        <label class="form-label">User ID *</label>
+        <input type="text" class="form-input" id="pub-user-id" value="{{ user_id }}" placeholder="user_alice" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Event Type *</label>
+        <select class="form-input" id="pub-event-type">
+          {% for et_value, et_label in event_types %}
+          <option value="{{ et_value }}">{{ et_value }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Payload (JSON) *</label>
+        <textarea class="form-input" id="pub-payload" rows="6" placeholder='{"request_id": "req_123", "status": "created"}'>{
+  "request_id": "req_123",
+  "status": "new"
+}</textarea>
+      </div>
+      <div id="pub-error" class="alert alert-error" style="display:none"></div>
+      <div id="pub-success" class="alert alert-success" style="display:none"></div>
+      <button class="btn btn-primary" onclick="publishEvent()">🚀 Publish Event</button>
+    </div>
+
+    <!-- Bulk publish (Part B testing) -->
+    <div class="card" style="margin-top:1rem">
+      <div class="card-header">
+        <div class="card-title">⚡ Bulk Publish <span style="color:var(--text-muted);font-size:0.8rem">(rate limit testing)</span></div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <label class="form-label">Count</label>
+          <input type="number" class="form-input" id="bulk-count" value="20" min="1" max="1000" style="width:90px" />
+        </div>
+        <div>
+          <label class="form-label">Event Type</label>
+          <select class="form-input" id="bulk-event-type" style="width:180px">
+            {% for et_value, et_label in event_types %}
+            <option value="{{ et_value }}">{{ et_value }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-secondary" onclick="bulkPublish()">Publish All</button>
+      </div>
+      <div id="bulk-status" style="margin-top:10px;font-size:0.8rem;color:var(--text-muted)"></div>
+    </div>
+  </div>
+
+  <!-- Recent events -->
+  <div>
+    <div class="page-header" style="margin-bottom:1rem">
+      <div class="page-title">Recent Events</div>
+    </div>
+    {% if events %}
+    <div class="card" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Event Type</th>
+              <th>Deliveries</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for event in events %}
+            <tr>
+              <td><span class="badge-event">{{ event.event_type }}</span></td>
+              <td class="mono">{{ event.deliveries.count }}</td>
+              <td class="mono">{{ event.created_at|date:"H:i:s" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state card">
+      <div class="icon">📡</div>
+      <p>No events published yet{% if user_id %} for {{ user_id }}{% endif %}.</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function publishEvent() {
+  const userId = document.getElementById('pub-user-id').value.trim();
+  const eventType = document.getElementById('pub-event-type').value;
+  const payloadStr = document.getElementById('pub-payload').value.trim();
+  const errorEl = document.getElementById('pub-error');
+  const successEl = document.getElementById('pub-success');
+  errorEl.style.display = 'none';
+  successEl.style.display = 'none';
+
+  let payload;
+  try { payload = JSON.parse(payloadStr); }
+  catch(e) { errorEl.textContent = 'Invalid JSON payload'; errorEl.style.display = 'block'; return; }
+
+  const res = await fetch('/api/events/ingest/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, event_type: eventType, payload })
+  });
+  const data = await res.json();
+  if (res.ok) {
+    successEl.textContent = `✓ Event published! ${data.deliveries_queued} delivery/ies queued.`;
+    successEl.style.display = 'block';
+    setTimeout(() => location.reload(), 1500);
+  } else {
+    errorEl.textContent = data.error || 'Failed to publish event';
+    errorEl.style.display = 'block';
+  }
+}
+
+async function bulkPublish() {
+  const userId = document.getElementById('pub-user-id').value.trim() || '{{ user_id }}';
+  const count = parseInt(document.getElementById('bulk-count').value) || 20;
+  const eventType = document.getElementById('bulk-event-type').value;
+  const statusEl = document.getElementById('bulk-status');
+
+  if (!userId) { alert('Set a User ID first'); return; }
+
+  statusEl.textContent = `Publishing ${count} events...`;
+  let sent = 0;
+  const promises = [];
+  for (let i = 0; i < count; i++) {
+    promises.push(fetch('/api/events/ingest/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, event_type: eventType, payload: { index: i, bulk: true } })
+    }));
+  }
+  const results = await Promise.all(promises);
+  sent = results.filter(r => r.ok).length;
+  statusEl.textContent = `✓ Published ${sent}/${count} events. Check Deliveries tab to watch them drain.`;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "webhook_app/base.html" %}
+{% block title %}Deliveries{% endblock %}
+
+{% block content %}
+<div class="user-bar">
+  <label>👤 User ID:</label>
+  <form method="GET" action="/deliveries/" style="display:flex;gap:8px;align-items:center;">
+    <input type="text" name="user_id" value="{{ user_id }}" placeholder="e.g. user_alice" required />
+    <button type="submit" class="btn btn-primary btn-sm">Switch</button>
+  </form>
+  {% if user_id %}
+  <button class="btn btn-secondary btn-sm" onclick="location.reload()">↻ Refresh</button>
+  {% endif %}
+</div>
+
+<div class="page-header">
+  <div>
+    <div class="page-title">Delivery Log</div>
+    <div class="page-subtitle">Last 100 delivery attempts{% if user_id %} for <strong>{{ user_id }}</strong>{% endif %}</div>
+  </div>
+</div>
+
+{% if deliveries %}
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Event Type</th>
+          <th>Webhook URL</th>
+          <th>HTTP</th>
+          <th>Queued</th>
+          <th>Delivered</th>
+          <th>Latency</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in deliveries %}
+        <tr>
+          <td>
+            {% if d.status == 'success' %}
+              <span class="badge badge-success">✓</span>
+            {% elif d.status == 'failed' %}
+              <span class="badge badge-failed">✗</span>
+            {% else %}
+              <span class="badge badge-pending">⏳</span>
+            {% endif %}
+          </td>
+          <td><span class="badge-event">{{ d.event.event_type }}</span></td>
+          <td>
+            <div class="url-cell" title="{{ d.webhook.url }}">{{ d.webhook.url }}</div>
+          </td>
+          <td class="mono">{{ d.response_status_code|default:"—" }}</td>
+          <td class="mono" style="white-space:nowrap">{{ d.queued_at|date:"H:i:s.u"|truncatechars:12 }}</td>
+          <td class="mono" style="white-space:nowrap">{{ d.delivered_at|date:"H:i:s.u"|truncatechars:12|default:"—" }}</td>
+          <td class="mono">
+            {% if d.delivered_at and d.queued_at %}
+              {% with delta=d.delivered_at|timeuntil:d.queued_at %}—{% endwith %}
+            {% else %}—{% endif %}
+          </td>
+          <td class="mono" style="color:var(--danger);font-size:0.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ d.error_message }}">
+            {{ d.error_message|truncatechars:50|default:"—" }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% elif user_id %}
+<div class="empty-state card">
+  <div class="icon">📭</div>
+  <p>No deliveries yet for <strong>{{ user_id }}</strong>.</p>
+</div>
+{% else %}
+<div class="empty-state card">
+  <div class="icon">👆</div>
+  <p>Enter a User ID above to view delivery history.</p>
+</div>
+{% endif %}
+{% endblock %}

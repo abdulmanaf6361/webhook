@@ -1,0 +1,113 @@
+{% extends "webhook_app/base.html" %}
+{% block title %}{% if webhook %}Edit Webhook{% else %}Register Webhook{% endif %}{% endblock %}
+
+{% block content %}
+<div class="user-bar">
+  <label>👤 User ID:</label>
+  <span style="color:var(--accent);font-weight:600">{{ user_id }}</span>
+</div>
+
+<div style="max-width: 640px;">
+  <div class="page-header">
+    <div>
+      <div class="page-title">{% if webhook %}Edit Webhook{% else %}Register Webhook{% endif %}</div>
+      <div class="page-subtitle">{% if webhook %}Update endpoint URL or event subscriptions{% else %}Create a new webhook endpoint{% endif %}</div>
+    </div>
+    <a href="/?user_id={{ user_id }}" class="btn btn-secondary">← Back</a>
+  </div>
+
+  <div class="card">
+    <form id="webhook-form">
+      {% csrf_token %}
+
+      <div class="form-group">
+        <label class="form-label">Target URL *</label>
+        <input type="url" class="form-input" id="url" name="url"
+               value="{% if webhook %}{{ webhook.url }}{% endif %}"
+               placeholder="https://your-endpoint.com/webhooks"
+               required />
+        <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px">The URL that will receive POST requests when events occur.</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Event Types * (select at least one)</label>
+        <div class="checkbox-group">
+          {% for et_value, et_label in event_types %}
+          <label class="checkbox-label">
+            <input type="checkbox" name="event_types" value="{{ et_value }}"
+              {% if webhook and et_value in webhook.event_types %}checked{% endif %} />
+            <span><code>{{ et_value }}</code></span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      {% if webhook %}
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <div class="checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="is_active" {% if webhook.is_active %}checked{% endif %} />
+            <span>Active (receives deliveries)</span>
+          </label>
+        </div>
+      </div>
+      {% endif %}
+
+      <div id="form-error" class="alert alert-error" style="display:none"></div>
+      <div id="form-success" class="alert alert-success" style="display:none"></div>
+
+      <div style="display:flex;gap:10px;margin-top:1.5rem">
+        <button type="submit" class="btn btn-primary">
+          {% if webhook %}Save Changes{% else %}Register Webhook{% endif %}
+        </button>
+        <a href="/?user_id={{ user_id }}" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const userId = "{{ user_id }}";
+  const webhookId = "{{ webhook.id|default:'' }}";
+  const isEdit = Boolean(webhookId);
+
+  document.getElementById('webhook-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = document.getElementById('url').value.trim();
+    const eventTypes = [...document.querySelectorAll('input[name=event_types]:checked')].map(x => x.value);
+    const errorEl = document.getElementById('form-error');
+    const successEl = document.getElementById('form-success');
+    errorEl.style.display = 'none';
+    successEl.style.display = 'none';
+
+    if (!url) { errorEl.textContent = 'URL is required'; errorEl.style.display = 'block'; return; }
+    if (eventTypes.length === 0) { errorEl.textContent = 'Select at least one event type'; errorEl.style.display = 'block'; return; }
+
+    const body = { url, event_types: eventTypes };
+    {% if webhook %}
+    body.is_active = document.getElementById('is_active').checked;
+    {% endif %}
+
+    const endpoint = isEdit ? `/api/webhooks/${webhookId}/` : '/api/webhooks/';
+    const method = isEdit ? 'PUT' : 'POST';
+
+    const res = await fetch(endpoint, {
+      method,
+      headers: { 'X-User-Id': userId, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (res.ok) {
+      successEl.textContent = isEdit ? 'Webhook updated!' : 'Webhook registered!';
+      successEl.style.display = 'block';
+      setTimeout(() => window.location.href = `/?user_id=${userId}`, 800);
+    } else {
+      errorEl.textContent = data.error || 'Something went wrong';
+      errorEl.style.display = 'block';
+    }
+  });
+</script>
+{% endblock %}

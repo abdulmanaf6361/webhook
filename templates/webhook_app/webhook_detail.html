@@ -1,0 +1,110 @@
+{% extends "webhook_app/base.html" %}
+{% block title %}Webhook Detail{% endblock %}
+
+{% block content %}
+<div class="user-bar">
+  <label>👤 User ID:</label>
+  <span style="color:var(--accent);font-weight:600">{{ user_id }}</span>
+</div>
+
+<div class="page-header">
+  <div>
+    <div class="page-title">Webhook Detail</div>
+    <div class="page-subtitle mono">{{ webhook.id }}</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="/webhooks/{{ webhook.id }}/edit/?user_id={{ user_id }}" class="btn btn-secondary">Edit</a>
+    <a href="/?user_id={{ user_id }}" class="btn btn-secondary">← Back</a>
+  </div>
+</div>
+
+<!-- Webhook info card -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Configuration</div>
+    <div>
+      {% if webhook.is_active %}
+        <span class="badge badge-active">● Active</span>
+      {% else %}
+        <span class="badge badge-disabled">○ Disabled</span>
+      {% endif %}
+    </div>
+  </div>
+  <table style="width:auto;min-width:400px">
+    <tr>
+      <td style="padding:6px 16px 6px 0;color:var(--text-muted);font-size:0.875rem">URL</td>
+      <td class="mono" style="padding:6px 0">{{ webhook.url }}</td>
+    </tr>
+    <tr>
+      <td style="padding:6px 16px 6px 0;color:var(--text-muted);font-size:0.875rem">Event Types</td>
+      <td style="padding:6px 0">
+        <div class="event-chips">
+          {% for et in webhook.event_types %}
+            <span class="badge-event">{{ et }}</span>
+          {% endfor %}
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:6px 16px 6px 0;color:var(--text-muted);font-size:0.875rem">Created</td>
+      <td class="mono" style="padding:6px 0">{{ webhook.created_at }}</td>
+    </tr>
+    <tr>
+      <td style="padding:6px 16px 6px 0;color:var(--text-muted);font-size:0.875rem">Updated</td>
+      <td class="mono" style="padding:6px 0">{{ webhook.updated_at }}</td>
+    </tr>
+  </table>
+</div>
+
+<!-- Delivery history -->
+<div class="page-header" style="margin-top:1.5rem">
+  <div class="page-title" style="font-size:1.1rem">Delivery History</div>
+  <span class="text-muted" style="font-size:0.8rem">Last 50 deliveries</span>
+</div>
+
+{% if deliveries %}
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Event Type</th>
+          <th>HTTP</th>
+          <th>Queued At</th>
+          <th>Delivered At</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in deliveries %}
+        <tr>
+          <td>
+            {% if d.status == 'success' %}
+              <span class="badge badge-success">✓ Success</span>
+            {% elif d.status == 'failed' %}
+              <span class="badge badge-failed">✗ Failed</span>
+            {% else %}
+              <span class="badge badge-pending">⏳ Pending</span>
+            {% endif %}
+          </td>
+          <td><span class="badge-event">{{ d.event.event_type }}</span></td>
+          <td class="mono">{{ d.response_status_code|default:"—" }}</td>
+          <td class="mono">{{ d.queued_at|date:"M d H:i:s" }}</td>
+          <td class="mono">{{ d.delivered_at|date:"M d H:i:s"|default:"—" }}</td>
+          <td class="mono" style="color:var(--danger);font-size:0.75rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ d.error_message }}">
+            {{ d.error_message|truncatechars:60|default:"—" }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state card">
+  <div class="icon">📭</div>
+  <p>No deliveries yet for this webhook.</p>
+</div>
+{% endif %}
+{% endblock %}

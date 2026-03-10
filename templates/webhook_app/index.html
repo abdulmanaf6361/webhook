@@ -1,0 +1,138 @@
+{% extends "webhook_app/base.html" %}
+{% block title %}Webhooks — Dashboard{% endblock %}
+
+{% block content %}
+<!-- User selector -->
+<div class="user-bar">
+  <label>👤 User ID:</label>
+  <form method="GET" action="/" style="display:flex;gap:8px;align-items:center;">
+    <input type="text" name="user_id" value="{{ user_id }}" placeholder="e.g. user_alice" required />
+    <button type="submit" class="btn btn-primary btn-sm">Switch</button>
+  </form>
+  <div style="flex:1"></div>
+  <div class="text-muted" style="font-size:0.8rem;">⚡ Rate limit: <strong style="color:var(--accent)">{{ rate_limit }}/s</strong></div>
+</div>
+
+{% if user_id %}
+
+<!-- Stats -->
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="stat-value">{{ webhooks|length }}</div>
+    <div class="stat-label">Total Webhooks</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--success)">{{ webhooks|length }}</div>
+    <div class="stat-label">Showing</div>
+  </div>
+</div>
+
+<!-- Page header -->
+<div class="page-header">
+  <div>
+    <div class="page-title">Webhooks</div>
+    <div class="page-subtitle">Registered endpoints for <strong>{{ user_id }}</strong></div>
+  </div>
+  <a href="/webhooks/new/?user_id={{ user_id }}" class="btn btn-primary">＋ Register Webhook</a>
+</div>
+
+<!-- Filters -->
+<div class="filter-bar">
+  <a href="/?user_id={{ user_id }}" class="filter-btn {% if not status_filter %}active{% endif %}">All</a>
+  <a href="/?user_id={{ user_id }}&status=active" class="filter-btn {% if status_filter == 'active' %}active{% endif %}">Active</a>
+  <a href="/?user_id={{ user_id }}&status=disabled" class="filter-btn {% if status_filter == 'disabled' %}active{% endif %}">Disabled</a>
+</div>
+
+{% if webhooks %}
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>URL</th>
+          <th>Event Types</th>
+          <th>Created</th>
+          <th style="text-align:right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for webhook in webhooks %}
+        <tr>
+          <td>
+            {% if webhook.is_active %}
+              <span class="badge badge-active">● Active</span>
+            {% else %}
+              <span class="badge badge-disabled">○ Disabled</span>
+            {% endif %}
+          </td>
+          <td><div class="url-cell" title="{{ webhook.url }}">{{ webhook.url }}</div></td>
+          <td>
+            <div class="event-chips">
+              {% for et in webhook.event_types %}
+                <span class="badge-event">{{ et }}</span>
+              {% endfor %}
+            </div>
+          </td>
+          <td class="mono">{{ webhook.created_at|date:"M d, H:i" }}</td>
+          <td style="text-align:right">
+            <div class="card-actions" style="justify-content:flex-end">
+              <a href="/webhooks/{{ webhook.id }}/?user_id={{ user_id }}" class="btn btn-secondary btn-sm">Logs</a>
+              <a href="/webhooks/{{ webhook.id }}/edit/?user_id={{ user_id }}" class="btn btn-secondary btn-sm">Edit</a>
+              <button class="btn btn-sm {% if webhook.is_active %}btn-danger{% else %}btn-success{% endif %}"
+                      onclick="toggleWebhook('{{ webhook.id }}', this)">
+                {% if webhook.is_active %}Disable{% else %}Enable{% endif %}
+              </button>
+              <button class="btn btn-danger btn-sm" onclick="deleteWebhook('{{ webhook.id }}', this)">Delete</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% else %}
+<div class="empty-state card">
+  <div class="icon">🪝</div>
+  <p>No webhooks found for <strong>{{ user_id }}</strong>.</p>
+  <br/>
+  <a href="/webhooks/new/?user_id={{ user_id }}" class="btn btn-primary">Register your first webhook</a>
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state card">
+  <div class="icon">👋</div>
+  <p>Enter a User ID above to manage webhooks.</p>
+  <br/>
+  <p class="text-muted" style="font-size:0.85rem">Try <code>user_alice</code> or <code>user_bob</code></p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const userId = "{{ user_id }}";
+
+  async function toggleWebhook(id, btn) {
+    const res = await fetch(`/api/webhooks/${id}/toggle/`, {
+      method: 'POST',
+      headers: { 'X-User-Id': userId }
+    });
+    if (res.ok) location.reload();
+    else alert('Failed to toggle webhook');
+  }
+
+  async function deleteWebhook(id, btn) {
+    if (!confirm('Delete this webhook permanently?')) return;
+    const res = await fetch(`/api/webhooks/${id}/`, {
+      method: 'DELETE',
+      headers: { 'X-User-Id': userId }
+    });
+    if (res.ok) location.reload();
+    else alert('Failed to delete webhook');
+  }
+</script>
+{% endblock %}
