@@ -2,7 +2,6 @@ import time
 import json
 import logging
 import requests
-from datetime import datetime, timezone
 
 from celery import shared_task
 import redis as redis_lib
