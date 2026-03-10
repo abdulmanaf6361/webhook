@@ -20,10 +20,12 @@ _lock = threading.Lock()
 _received = deque(maxlen=MAX_LOGS)
 
 
+from datetime import datetime, UTC
+from http.server import BaseHTTPRequestHandler
+
 class MockReceiverHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        # Override to use our own logging
-        print(f"[{datetime.utcnow().isoformat()}] {format % args}")
+        print(f"[{datetime.now(UTC).isoformat()}] {format % args}")
 
     def do_POST(self):
         content_length = int(self.headers.get('Content-Length', 0))
