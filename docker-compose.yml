@@ -1,0 +1,84 @@
+version: '3.9'
+
+services:
+
+  # ── Redis (broker + rate limit state) ────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Django Web API + UI ───────────────────────────────────────────────────────
+  web:
+    build: .
+    environment:
+      - SERVICE_TYPE=web
+      - REDIS_URL=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=webhook.settings
+      - DEFAULT_RATE_LIMIT=10
+      - DB_PATH=/data/db.sqlite3
+    volumes:
+      - sqlite_data:/data
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/internal/rate-limit/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Celery Worker (delivery executor) ────────────────────────────────────────
+  worker:
+    build: .
+    environment:
+      - SERVICE_TYPE=worker
+      - REDIS_URL=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=webhook.settings
+      - DEFAULT_RATE_LIMIT=10
+      - DB_PATH=/data/db.sqlite3
+    volumes:
+      - sqlite_data:/data
+      - .:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+  # ── Celery Beat (periodic task scheduler: drains queue every second) ─────────
+  beat:
+    build: .
+    environment:
+      - SERVICE_TYPE=beat
+      - REDIS_URL=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=webhook.settings
+      - DB_PATH=/data/db.sqlite3
+    volumes:
+      - sqlite_data:/data
+      - .:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+  # ── Mock Receiver (customer endpoint simulator) ───────────────────────────────
+  mock_receiver:
+    build:
+      context: ./mock_receiver
+    ports:
+      - "9000:9000"
+    environment:
+      - PORT=9000
+
+volumes:
+  sqlite_data:
