@@ -74,8 +74,12 @@ WSGI_APPLICATION = 'webhook.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql_psycopg2',
+        'NAME': 'atomicwork_db',
+        'USER': 'atomicwork',
+        'PASSWORD': 'atomicwork',
+        'HOST': '13.203.169.251',
+        'PORT': '5432', 
     }
 }
 
