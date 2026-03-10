@@ -1,10 +1,12 @@
 import logging
-
+import json
 from django.shortcuts import render
 from django.http import JsonResponse
 from webhook_app.models import Webhook, EVENT_TYPES, Event, DeliveryAttempt
 from django.shortcuts import get_object_or_404
 from .tasks import set_rate_limit, get_rate_limit
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 logger = logging.getLogger(__name__)
 
 
@@ -22,6 +24,51 @@ def json_error(message, status=400):
 
 def json_success(data, status=200):
     return JsonResponse(data, status=status)
+
+
+
+# ── Delivery History API ───────────────────────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(['GET'])
+def delivery_history(request, webhook_id):
+    """GET /api/webhooks/<id>/deliveries/ — delivery history for a webhook."""
+    user_id = get_user_id(request)
+    if not user_id:
+        return json_error('X-User-Id header is required', 401)
+
+    webhook = get_object_or_404(Webhook, id=webhook_id, user_id=user_id)
+    deliveries = DeliveryAttempt.objects.filter(webhook=webhook).select_related('event').order_by('-queued_at')[:50]
+    return json_success({'deliveries': [_delivery_to_dict(d) for d in deliveries]})
+
+
+# ── Serializers ────────────────────────────────────────────────────────────────
+
+def _webhook_to_dict(w: Webhook) -> dict:
+    return {
+        'id': str(w.id),
+        'user_id': w.user_id,
+        'url': w.url,
+        'event_types': w.event_types,
+        'is_active': w.is_active,
+        'created_at': w.created_at.isoformat(),
+        'updated_at': w.updated_at.isoformat(),
+    }
+
+
+def _delivery_to_dict(d: DeliveryAttempt) -> dict:
+    return {
+        'id': str(d.id),
+        'webhook_id': str(d.webhook_id),
+        'event_id': str(d.event_id),
+        'event_type': d.event.event_type,
+        'status': d.status,
+        'response_status_code': d.response_status_code,
+        'error_message': d.error_message,
+        'queued_at': d.queued_at.isoformat(),
+        'delivered_at': d.delivered_at.isoformat() if d.delivered_at else None,
+    }
+
 
 
 # ── UI Views ───────────────────────────────────────────────────────────────────
@@ -108,3 +155,125 @@ def events_view(request):
         'event_types': EVENT_TYPES,
         'user_id': user_id,
     })
+
+
+
+
+
+
+
+
+
+
+# ── Webhook CRUD API ───────────────────────────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(['GET', 'POST'])
+def webhooks_list_create(request):
+    """
+    GET  /api/webhooks/         — list webhooks for user
+    POST /api/webhooks/         — create webhook
+    """
+    user_id = get_user_id(request)
+    if not user_id:
+        return json_error('X-User-Id header is required', 401)
+
+    if request.method == 'GET':
+        status_filter = request.GET.get('status', '')
+        qs = Webhook.objects.filter(user_id=user_id)
+        if status_filter == 'active':
+            qs = qs.filter(is_active=True)
+        elif status_filter == 'disabled':
+            qs = qs.filter(is_active=False)
+        data = [_webhook_to_dict(w) for w in qs]
+        return json_success({'webhooks': data})
+
+    # POST — create
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        # Support form submissions too
+        body = request.POST.dict()
+        body['event_types'] = request.POST.getlist('event_types')
+
+    url = body.get('url', '').strip()
+    event_types = body.get('event_types', [])
+
+    if not url:
+        return json_error('url is required')
+    if not event_types:
+        return json_error('at least one event_type is required')
+
+    invalid = [et for et in event_types if et not in VALID_EVENT_TYPES]
+    if invalid:
+        return json_error(f'Invalid event types: {invalid}. Valid: {list(VALID_EVENT_TYPES)}')
+
+    webhook = Webhook.objects.create(
+        user_id=user_id,
+        url=url,
+        event_types=list(set(event_types)),
+        is_active=True,
+    )
+    logger.info(f"Created webhook {webhook.id} for user {user_id}")
+    return json_success(_webhook_to_dict(webhook), status=201)
+
+
+@csrf_exempt
+@require_http_methods(['GET', 'PUT', 'PATCH', 'DELETE', 'POST'])
+def webhook_detail_api(request, webhook_id):
+    """
+    GET    /api/webhooks/<id>/  — get webhook
+    PUT    /api/webhooks/<id>/  — full update
+    PATCH  /api/webhooks/<id>/  — partial update
+    DELETE /api/webhooks/<id>/  — delete
+    """
+    user_id = get_user_id(request)
+    if not user_id:
+        return json_error('X-User-Id header is required', 401)
+
+    webhook = get_object_or_404(Webhook, id=webhook_id, user_id=user_id)
+
+    if request.method == 'GET':
+        return json_success(_webhook_to_dict(webhook))
+
+    if request.method == 'DELETE':
+        webhook.delete()
+        return json_success({'message': 'Webhook deleted'})
+
+    # PUT / PATCH / POST (form fallback)
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        body = request.POST.dict()
+        if 'event_types' in request.POST:
+            body['event_types'] = request.POST.getlist('event_types')
+
+    if 'url' in body:
+        webhook.url = body['url'].strip()
+    if 'event_types' in body:
+        event_types = body['event_types']
+        invalid = [et for et in event_types if et not in VALID_EVENT_TYPES]
+        if invalid:
+            return json_error(f'Invalid event types: {invalid}')
+        webhook.event_types = list(set(event_types))
+    if 'is_active' in body:
+        webhook.is_active = bool(body['is_active'])
+
+    webhook.save()
+    return json_success(_webhook_to_dict(webhook))
+
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def webhook_toggle(request, webhook_id):
+    """POST /api/webhooks/<id>/toggle/ — enable/disable webhook."""
+    user_id = get_user_id(request)
+    if not user_id:
+        return json_error('X-User-Id header is required', 401)
+
+    webhook = get_object_or_404(Webhook, id=webhook_id, user_id=user_id)
+    webhook.is_active = not webhook.is_active
+    webhook.save()
+    action = 'enabled' if webhook.is_active else 'disabled'
+    logger.info(f"Webhook {webhook_id} {action} by user {user_id}")
+    return json_success({'message': f'Webhook {action}', 'is_active': webhook.is_active})

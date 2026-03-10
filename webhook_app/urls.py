@@ -9,4 +9,14 @@ urlpatterns = [
     path('webhooks/<uuid:webhook_id>/edit/', views.webhook_edit, name='webhook_edit'),
     path('deliveries/', views.deliveries_view, name='deliveries'),
     path('events/', views.events_view, name='events'),
+
+
+
+    # ── Webhook CRUD API ───────────────────────────────────────────────────────
+    path('api/webhooks/', views.webhooks_list_create, name='api_webhooks'),
+    path('api/webhooks/<uuid:webhook_id>/', views.webhook_detail_api, name='api_webhook_detail'),
+    path('api/webhooks/<uuid:webhook_id>/toggle/', views.webhook_toggle, name='api_webhook_toggle'),
+    path('api/webhooks/<uuid:webhook_id>/deliveries/', views.delivery_history, name='api_delivery_history'),
+
+    
 ]
