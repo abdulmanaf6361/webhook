@@ -9,6 +9,8 @@ import json
 import os
 import threading
 from datetime import datetime
+from zoneinfo import ZoneInfo
+IST = ZoneInfo("Asia/Kolkata")
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import deque
 
@@ -25,7 +27,7 @@ from http.server import BaseHTTPRequestHandler
 
 class MockReceiverHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        print(f"[{datetime.now(UTC).isoformat()}] {format % args}")
+        print(f"[{datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S.%f %Z')}] {format % args}")
 
     def do_POST(self):
         content_length = int(self.headers.get('Content-Length', 0))
@@ -37,7 +39,7 @@ class MockReceiverHandler(BaseHTTPRequestHandler):
             body = {'raw': body_bytes.decode('utf-8', errors='replace')}
 
         entry = {
-            'received_at': datetime.utcnow().isoformat(),
+            'received_at': datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S.%f %Z'),
             'path': self.path,
             'headers': dict(self.headers),
             'body': body,

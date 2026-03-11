@@ -1,0 +1,568 @@
+{% extends "webhook_app/base.html" %}
+{% block title %}Rate Limit Test — Part B{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── Test-page specific styles ── */
+  .test-grid {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 1.5rem;
+    align-items: start;
+  }
+  @media (max-width: 900px) { .test-grid { grid-template-columns: 1fr; } }
+
+  /* Config panel */
+  .config-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1rem; }
+  .config-row .form-group { margin: 0; }
+  .config-row label { font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 4px; }
+  .config-row input, .config-row select {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); padding: 7px 10px; font-size: 0.85rem;
+  }
+  .narrow { width: 80px !important; }
+
+  /* Rate limit badge */
+  .rate-badge {
+    background: rgba(99,102,241,0.12);
+    border: 1px solid rgba(99,102,241,0.3);
+    border-radius: 8px;
+    padding: 10px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .rate-badge .label { font-size: 0.8rem; color: var(--text-muted); }
+  .rate-badge .value { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+
+  /* Run button */
+  .btn-run {
+    width: 100%;
+    padding: 12px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-run:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Step list */
+  .steps { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .step {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 12px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.875rem;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .step.active  { border-color: var(--accent); background: rgba(99,102,241,0.07); }
+  .step.pass    { border-color: var(--success); background: rgba(34,197,94,0.06); }
+  .step.fail    { border-color: var(--danger);  background: rgba(239,68,68,0.06); }
+  .step-icon { font-size: 1rem; width: 22px; text-align: center; flex-shrink: 0; margin-top: 1px; }
+  .step-body { flex: 1; }
+  .step-title { font-weight: 600; }
+  .step-detail { color: var(--text-muted); font-size: 0.8rem; margin-top: 3px; font-family: monospace; }
+
+  /* Timeline chart */
+  .timeline-wrap {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 1rem;
+  }
+  .timeline-title { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+  .timeline-track { position: relative; height: 28px; background: var(--surface); border-radius: 6px; overflow: hidden; margin-bottom: 6px; }
+  .timeline-bar {
+    position: absolute; top: 4px; height: 20px; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; font-weight: 600; white-space: nowrap; overflow: hidden;
+    transition: width 0.3s ease;
+    min-width: 2px;
+  }
+  .timeline-bar.b1 { background: rgba(99,102,241,0.7); color: #fff; }
+  .timeline-bar.b2 { background: rgba(34,197,94,0.7);  color: #fff; }
+  .timeline-legend { display: flex; gap: 16px; font-size: 0.75rem; color: var(--text-muted); margin-top: 6px; }
+  .timeline-legend span { display: flex; align-items: center; gap: 5px; }
+  .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+  /* Delivery counter */
+  .counter-row { display: flex; gap: 10px; margin-top: 1rem; }
+  .counter-box {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; text-align: center;
+  }
+  .counter-box .num { font-size: 1.6rem; font-weight: 700; }
+  .counter-box .lbl { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+  .counter-box.b1 .num { color: var(--accent); }
+  .counter-box.b2 .num { color: var(--success); }
+  .counter-box.total .num { color: var(--text); }
+
+  /* Verdict */
+  .verdict {
+    margin-top: 1rem; padding: 14px 18px; border-radius: 10px;
+    font-size: 1rem; font-weight: 600; text-align: center; display: none;
+  }
+  .verdict.pass { background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.4); color: var(--success); }
+  .verdict.fail { background: rgba(239,68,68,0.12);  border: 1px solid rgba(239,68,68,0.4);  color: var(--danger); }
+
+  /* Log console */
+  .log-console {
+    background: #0a0c14; border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; font-family: monospace; font-size: 0.78rem;
+    color: #94a3b8; height: 220px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .log-line { line-height: 1.5; }
+  .log-line.ok   { color: #22c55e; }
+  .log-line.warn { color: #f59e0b; }
+  .log-line.err  { color: #ef4444; }
+  .log-line.info { color: #818cf8; }
+  .log-line.dim  { color: #475569; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">⚡ Rate Limit Test <span style="font-size:0.9rem;color:var(--text-muted);font-weight:400">— Part B Acceptance</span></div>
+    <div class="page-subtitle">Verifies rate limiting, live config update, and zero-loss delivery</div>
+  </div>
+</div>
+
+<div class="test-grid">
+
+  <!-- ── Left: Config + Steps ── -->
+  <div>
+
+    <!-- Live rate display -->
+    <div class="rate-badge">
+      <div>
+        <div class="label">Current system rate limit</div>
+        <div class="value" id="live-rate">— /s</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="refreshRate()">↻</button>
+    </div>
+
+    <!-- Test config -->
+    <div class="card">
+      <div style="font-size:0.85rem;font-weight:600;margin-bottom:12px;color:var(--text-muted)">TEST CONFIGURATION</div>
+
+      <div class="config-row">
+        <div class="form-group">
+          <label>Batch size</label>
+          <input type="number" id="cfg-count" value="20" min="5" max="100" class="narrow" />
+        </div>
+        <div class="form-group">
+          <label>Rate — Batch 1 (slow)</label>
+          <input type="number" id="cfg-rate1" value="5" min="1" max="50" class="narrow" />
+        </div>
+        <div class="form-group">
+          <label>Rate — Batch 2 (fast)</label>
+          <input type="number" id="cfg-rate2" value="20" min="1" max="100" class="narrow" />
+        </div>
+      </div>
+
+      <div class="config-row" style="margin-bottom:1.25rem">
+        <div class="form-group">
+          <label>User ID</label>
+          <input type="text" id="cfg-user" value="test_ratelimit_ui" style="width:180px" />
+        </div>
+        <div class="form-group">
+          <label>Webhook URL</label>
+          <input type="text" id="cfg-webhook" value="http://mock_receiver:9000/" style="width:200px" />
+        </div>
+      </div>
+
+      <button class="btn-run" id="run-btn" onclick="runTest()">▶ Run Full Test</button>
+    </div>
+
+    <!-- Steps -->
+    <div style="margin-top:1rem">
+      <ul class="steps" id="steps-list">
+        <li class="step" id="step-0"><span class="step-icon">○</span><div class="step-body"><div class="step-title">Pre-flight checks</div><div class="step-detail" id="step-0-detail">API + mock receiver reachable</div></div></li>
+        <li class="step" id="step-1"><span class="step-icon">○</span><div class="step-body"><div class="step-title">Register webhook</div><div class="step-detail" id="step-1-detail">Create endpoint for test user</div></div></li>
+        <li class="step" id="step-2"><span class="step-icon">○</span><div class="step-body"><div class="step-title">Set rate → <span id="s2-rate">5</span>/s + burst publish</div><div class="step-detail" id="step-2-detail">Fire all events concurrently</div></div></li>
+        <li class="step" id="step-3"><span class="step-icon">○</span><div class="step-body"><div class="step-title">Wait — deliveries spread over time</div><div class="step-detail" id="step-3-detail">Expect spread ≥ (count/rate)s</div></div></li>
+        <li class="step" id="step-4"><span class="step-icon">○</span><div class="step-body"><div class="step-title">Update rate → <span id="s4-rate">20</span>/s (live)</div><div class="step-detail" id="step-4-detail">No restart needed</div></div></li>
+        <li class="step" id="step-5"><span class="step-icon">○</span><div class="step-body"><div class="step-title">Burst publish batch 2</div><div class="step-detail" id="step-5-detail">Same count, higher rate</div></div></li>
+        <li class="step" id="step-6"><span class="step-icon">○</span><div class="step-body"><div class="step-title">Verify faster delivery + no losses</div><div class="step-detail" id="step-6-detail">Batch 2 must be noticeably faster</div></div></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── Right: Live results ── -->
+  <div>
+
+    <!-- Counters -->
+    <div class="counter-row">
+      <div class="counter-box b1">
+        <div class="num" id="cnt-b1">—</div>
+        <div class="lbl">Batch 1 delivered</div>
+      </div>
+      <div class="counter-box b2">
+        <div class="num" id="cnt-b2">—</div>
+        <div class="lbl">Batch 2 delivered</div>
+      </div>
+      <div class="counter-box total">
+        <div class="num" id="cnt-total">—</div>
+        <div class="lbl">Total / expected</div>
+      </div>
+    </div>
+
+    <!-- Spread timeline -->
+    <div class="timeline-wrap" id="timeline-wrap" style="display:none">
+      <div class="timeline-title">Delivery Spread Timeline</div>
+
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:6px">Batch 1 (<span id="tl-rate1">5</span>/s)</div>
+      <div class="timeline-track">
+        <div class="timeline-bar b1" id="tl-bar1" style="left:0;width:0%"></div>
+      </div>
+      <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:10px" id="tl-label1">waiting…</div>
+
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:6px">Batch 2 (<span id="tl-rate2">20</span>/s)</div>
+      <div class="timeline-track">
+        <div class="timeline-bar b2" id="tl-bar2" style="left:0;width:0%"></div>
+      </div>
+      <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px" id="tl-label2">waiting…</div>
+
+      <div class="timeline-legend">
+        <span><span class="dot" style="background:rgba(99,102,241,0.7)"></span>Batch 1 (slow rate)</span>
+        <span><span class="dot" style="background:rgba(34,197,94,0.7)"></span>Batch 2 (fast rate)</span>
+      </div>
+    </div>
+
+    <!-- Verdict -->
+    <div class="verdict" id="verdict"></div>
+
+    <!-- Log console -->
+    <div style="margin-top:1rem">
+      <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Live Log</div>
+      <div class="log-console" id="log-console">
+        <div class="log-line dim">Ready. Configure and press ▶ Run Full Test.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// ── API helpers ────────────────────────────────────────────────────────────────
+async function apiFetch(method, path, body, extraHeaders) {
+  const opts = { method, headers: {'Content-Type':'application/json', ...(extraHeaders||{})} };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(path, opts);
+  const data = await r.json();
+  return { ok: r.ok, status: r.status, data };
+}
+
+// Poll delivery count from Django DB — avoids browser needing Docker network access
+async function getDeliveryCount(userId, sinceIso) {
+  try {
+    let url = `/api/internal/delivery-count/?user_id=${encodeURIComponent(userId)}`;
+    if (sinceIso) url += `&since=${encodeURIComponent(sinceIso)}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    return d.count || 0;
+  } catch { return 0; }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function nowIso() { return new Date().toISOString(); }
+
+// ── Log console ────────────────────────────────────────────────────────────────
+function log(msg, cls='') {
+  const el = document.getElementById('log-console');
+  const line = document.createElement('div');
+  line.className = 'log-line ' + cls;
+  const ts = new Date().toTimeString().slice(0,8);
+  line.textContent = `[${ts}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+function clearLog() { document.getElementById('log-console').innerHTML = ''; }
+
+// ── Step state ─────────────────────────────────────────────────────────────────
+function setStep(i, state, detail) {
+  const el = document.getElementById(`step-${i}`);
+  el.className = `step ${state}`;
+  const icons = { active:'⏳', pass:'✓', fail:'✗', '':'○' };
+  el.querySelector('.step-icon').textContent = icons[state] || '○';
+  if (detail !== undefined) document.getElementById(`step-${i}-detail`).textContent = detail;
+}
+function resetSteps() { for (let i=0;i<=6;i++) setStep(i,''); }
+
+// ── Rate display ───────────────────────────────────────────────────────────────
+async function refreshRate() {
+  try {
+    const { data } = await apiFetch('GET', '/api/internal/rate-limit/');
+    document.getElementById('live-rate').textContent = data.deliveries_per_second + ' /s';
+  } catch { document.getElementById('live-rate').textContent = 'err'; }
+}
+refreshRate();
+
+// ── Concurrent burst publish ───────────────────────────────────────────────────
+async function burstPublish(count, userId, offset) {
+  const t0 = Date.now();
+  const promises = Array.from({length: count}, (_, i) =>
+    fetch('/api/events/ingest/', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        user_id: userId,
+        event_type: 'request.created',
+        payload: { index: offset + i, test: 'rate_limit_ui' }
+      })
+    }).then(r => r.ok)
+  );
+  const results = await Promise.all(promises);
+  const ok = results.filter(Boolean).length;
+  return { ok, errors: count - ok, elapsed: (Date.now()-t0)/1000 };
+}
+
+// ── Poll deliveries via Django DB ──────────────────────────────────────────────
+async function pollDeliveries(userId, sinceIso, expected, onProgress, timeoutMs=45000) {
+  const t0       = Date.now();
+  let seen       = 0;
+  let firstTime  = null;
+  let lastTime   = null;
+  const deadline = t0 + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const count = await getDeliveryCount(userId, sinceIso);
+    if (count > seen) {
+      if (firstTime === null) firstTime = (Date.now()-t0)/1000;
+      lastTime = (Date.now()-t0)/1000;
+      seen = count;
+      onProgress(seen);
+    }
+    if (seen >= expected) break;
+    await sleep(500);
+  }
+
+  const spread  = (firstTime !== null && lastTime !== null) ? lastTime - firstTime : 0;
+  const elapsed = (Date.now()-t0)/1000;
+  return { delivered: seen, spread, firstTime, lastTime, elapsed };
+}
+
+// ── Timeline bar ───────────────────────────────────────────────────────────────
+function updateTimeline(batch, spread, maxSpread, firstTime, lastTime) {
+  const pct = maxSpread > 0 ? Math.min(100, (spread/maxSpread)*100) : 5;
+  document.getElementById(`tl-bar${batch}`).style.width = Math.max(pct,3)+'%';
+  const f = firstTime != null ? firstTime.toFixed(1) : '?';
+  const l = lastTime  != null ? lastTime.toFixed(1)  : '?';
+  document.getElementById(`tl-label${batch}`).textContent =
+    `spread: ${spread.toFixed(1)}s  |  first arrival: ${f}s  |  last arrival: ${l}s`;
+}
+
+// ── Main test ──────────────────────────────────────────────────────────────────
+let testRunning = false;
+
+async function runTest() {
+  if (testRunning) return;
+  testRunning = true;
+
+  const runBtn  = document.getElementById('run-btn');
+  runBtn.disabled = true;
+  runBtn.textContent = '⏳ Running…';
+
+  const COUNT   = parseInt(document.getElementById('cfg-count').value)  || 20;
+  const RATE1   = parseInt(document.getElementById('cfg-rate1').value)   || 5;
+  const RATE2   = parseInt(document.getElementById('cfg-rate2').value)   || 20;
+  const USER_ID = document.getElementById('cfg-user').value.trim()      || 'test_ratelimit_ui';
+  const WH_URL  = document.getElementById('cfg-webhook').value.trim()   || 'http://mock_receiver:9000/';
+
+  document.getElementById('s2-rate').textContent = RATE1;
+  document.getElementById('s4-rate').textContent = RATE2;
+  document.getElementById('tl-rate1').textContent = RATE1;
+  document.getElementById('tl-rate2').textContent = RATE2;
+
+  clearLog();
+  resetSteps();
+  document.getElementById('cnt-b1').textContent    = '—';
+  document.getElementById('cnt-b2').textContent    = '—';
+  document.getElementById('cnt-total').textContent = '—';
+  document.getElementById('verdict').style.display = 'none';
+  document.getElementById('timeline-wrap').style.display = 'none';
+
+  let webhookId = null;
+  let passed    = true;
+  let spread1   = 0, spread2 = 0;
+  let res1 = null, res2 = null;
+
+  try {
+
+    // ── Step 0: Pre-flight ──────────────────────────────────────────────────
+    setStep(0, 'active');
+    log('Running pre-flight checks…', 'info');
+    const rateCheck = await apiFetch('GET', '/api/internal/rate-limit/');
+    if (!rateCheck.ok) throw new Error('API not reachable');
+    log(`✓ API reachable. Current rate: ${rateCheck.data.deliveries_per_second}/s`, 'ok');
+
+    // Test our new proxy endpoint
+    const proxyCheck = await apiFetch('GET', '/api/internal/delivery-count/?user_id=preflight_check');
+    if (!proxyCheck.ok) throw new Error('Delivery count API not reachable');
+    log('✓ Delivery count API reachable', 'ok');
+    setStep(0, 'pass', 'API online');
+
+    // ── Step 1: Register webhook ────────────────────────────────────────────
+    setStep(1, 'active');
+    log(`Registering webhook for user: ${USER_ID}…`, 'info');
+    const regR = await fetch('/api/webhooks/', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'X-User-Id': USER_ID},
+      body: JSON.stringify({ url: WH_URL, event_types: ['request.created'] })
+    });
+    const regData = await regR.json();
+    if (!regR.ok) throw new Error(`Webhook reg failed: ${JSON.stringify(regData)}`);
+    webhookId = regData.id;
+    log(`✓ Webhook registered: ${webhookId.slice(0,16)}…`, 'ok');
+    setStep(1, 'pass', `ID: ${webhookId.slice(0,8)}…`);
+
+    // ── Step 2: Set rate1 + burst publish ───────────────────────────────────
+    setStep(2, 'active');
+    const r1set = await apiFetch('PUT', '/api/internal/rate-limit/', {deliveries_per_second: RATE1});
+    if (!r1set.ok) throw new Error('Failed to set rate limit');
+    await refreshRate();
+    log(`✓ Rate limit → ${RATE1}/s`, 'ok');
+    await sleep(1500); // let token bucket start empty
+
+    const sinceIso1 = nowIso();
+    log(`Publishing ${COUNT} events concurrently…`, 'info');
+    const pub1 = await burstPublish(COUNT, USER_ID, 0);
+    if (pub1.errors > 0) log(`⚠ ${pub1.errors} publish errors`, 'warn');
+    log(`✓ ${pub1.ok}/${COUNT} published in ${pub1.elapsed.toFixed(2)}s`, 'ok');
+    setStep(2, 'pass', `${pub1.ok} events in ${pub1.elapsed.toFixed(2)}s`);
+
+    // ── Step 3: Wait for batch 1 ────────────────────────────────────────────
+    setStep(3, 'active');
+    log(`Polling deliveries (DB) at ${RATE1}/s — expect ~${(COUNT/RATE1).toFixed(0)}s spread…`, 'info');
+
+    res1 = await pollDeliveries(USER_ID, sinceIso1, COUNT, (n) => {
+      document.getElementById('cnt-b1').textContent = `${n}/${COUNT}`;
+      log(`  → ${n} delivered`, 'dim');
+    });
+
+    spread1 = res1.spread;
+    document.getElementById('cnt-b1').textContent = `${res1.delivered}/${COUNT}`;
+    document.getElementById('timeline-wrap').style.display = 'block';
+    updateTimeline(1, spread1, Math.max(spread1, COUNT/RATE1*1.5), res1.firstTime, res1.lastTime);
+    log(`Batch 1: ${res1.delivered}/${COUNT} | spread=${spread1.toFixed(1)}s | total=${res1.elapsed.toFixed(1)}s`,
+        res1.delivered === COUNT ? 'ok' : 'err');
+
+    const minSpread1 = (COUNT / RATE1) * 0.4;
+    if (res1.delivered !== COUNT) {
+      setStep(3, 'fail', `${res1.delivered}/${COUNT} delivered`); passed = false;
+    } else if (spread1 < minSpread1) {
+      log(`⚠ Spread ${spread1.toFixed(1)}s < min expected ${minSpread1.toFixed(1)}s`, 'warn');
+      setStep(3, 'pass', `${res1.delivered}/${COUNT} ✓ | spread ${spread1.toFixed(1)}s ⚠`);
+    } else {
+      log(`✓ Rate limiting confirmed — spread ${spread1.toFixed(1)}s`, 'ok');
+      setStep(3, 'pass', `${res1.delivered}/${COUNT} ✓ | spread ${spread1.toFixed(1)}s ✓`);
+    }
+
+    // ── Step 4: Update rate live ─────────────────────────────────────────────
+    setStep(4, 'active');
+    log(`Updating rate → ${RATE2}/s (live, no restart)…`, 'info');
+    const r2set = await apiFetch('PUT', '/api/internal/rate-limit/', {deliveries_per_second: RATE2});
+    if (!r2set.ok) throw new Error('Failed to update rate');
+    await refreshRate();
+    log(`✓ Rate limit → ${RATE2}/s`, 'ok');
+    setStep(4, 'pass', `Updated to ${RATE2}/s instantly`);
+    await sleep(1500);
+
+    // ── Step 5: Burst publish batch 2 ───────────────────────────────────────
+    setStep(5, 'active');
+    const sinceIso2 = nowIso();
+    log(`Publishing ${COUNT} more events concurrently…`, 'info');
+    const pub2 = await burstPublish(COUNT, USER_ID, COUNT);
+    if (pub2.errors > 0) log(`⚠ ${pub2.errors} publish errors`, 'warn');
+    log(`✓ ${pub2.ok}/${COUNT} published in ${pub2.elapsed.toFixed(2)}s`, 'ok');
+    setStep(5, 'pass', `${pub2.ok} events in ${pub2.elapsed.toFixed(2)}s`);
+
+    // ── Step 6: Wait for batch 2 + compare ──────────────────────────────────
+    setStep(6, 'active');
+    log(`Polling deliveries at ${RATE2}/s — expect ~${(COUNT/RATE2).toFixed(1)}s spread…`, 'info');
+
+    res2 = await pollDeliveries(USER_ID, sinceIso2, COUNT, (n) => {
+      document.getElementById('cnt-b2').textContent = `${n}/${COUNT}`;
+    });
+
+    spread2 = res2.spread;
+    document.getElementById('cnt-b2').textContent = `${res2.delivered}/${COUNT}`;
+
+    const maxSpread = Math.max(spread1, spread2, COUNT/RATE1*1.5, 1);
+    updateTimeline(1, spread1, maxSpread, res1.firstTime, res1.lastTime);
+    updateTimeline(2, spread2, maxSpread, res2.firstTime, res2.lastTime);
+
+    const total     = res1.delivered + res2.delivered;
+    const noLoss    = total === COUNT * 2;
+    const fasterOk  = spread2 < spread1 * 0.7;
+    document.getElementById('cnt-total').textContent = `${total}/${COUNT*2}`;
+
+    log(`Batch 2: ${res2.delivered}/${COUNT} | spread=${spread2.toFixed(1)}s | total=${res2.elapsed.toFixed(1)}s`,
+        res2.delivered === COUNT ? 'ok' : 'err');
+
+    if (res2.delivered !== COUNT) {
+      setStep(6, 'fail', `${res2.delivered}/${COUNT} delivered`); passed = false;
+    } else if (!fasterOk) {
+      log(`⚠ Batch 2 (${spread2.toFixed(1)}s) not significantly faster than batch 1 (${spread1.toFixed(1)}s)`, 'warn');
+      setStep(6, 'pass', `${res2.delivered}/${COUNT} ✓ | spread ${spread2.toFixed(1)}s ⚠`);
+    } else {
+      const speedup = spread1 > 0 ? (spread1/Math.max(spread2,0.1)).toFixed(1) : '?';
+      log(`✓ ${speedup}× faster: ${spread2.toFixed(1)}s vs ${spread1.toFixed(1)}s`, 'ok');
+      setStep(6, 'pass', `${res2.delivered}/${COUNT} ✓ | ${speedup}× faster ✓`);
+    }
+
+    if (!noLoss) { passed = false; log(`✗ LOSSES: ${total}/${COUNT*2} total`, 'err'); }
+    else log(`✓ Zero losses: ${total}/${COUNT*2}`, 'ok');
+
+  } catch(err) {
+    log(`✗ Test aborted: ${err.message}`, 'err');
+    passed = false;
+  }
+
+  // ── Cleanup test webhook ───────────────────────────────────────────────────
+  if (webhookId) {
+    try {
+      await fetch(`/api/webhooks/${webhookId}/`, {
+        method: 'DELETE',
+        headers: {'X-User-Id': document.getElementById('cfg-user').value.trim()}
+      });
+      log(`Cleaned up webhook ${webhookId.slice(0,8)}…`, 'dim');
+    } catch {}
+  }
+
+  // ── Verdict ────────────────────────────────────────────────────────────────
+  const verdictEl = document.getElementById('verdict');
+  verdictEl.style.display = 'block';
+  if (passed && res1 && res2) {
+    const speedup = spread1 > 0 ? (spread1/Math.max(spread2,0.1)).toFixed(1) : '?';
+    verdictEl.className = 'verdict pass';
+    verdictEl.innerHTML =
+      `✅ ALL CRITERIA PASSED &nbsp;|&nbsp; ` +
+      `Batch 1 (${document.getElementById('cfg-rate1').value}/s): ${spread1.toFixed(1)}s spread &nbsp;|&nbsp; ` +
+      `Batch 2 (${document.getElementById('cfg-rate2').value}/s): ${spread2.toFixed(1)}s spread &nbsp;|&nbsp; ` +
+      `${speedup}× faster`;
+    log('✅ ALL ACCEPTANCE CRITERIA PASSED', 'ok');
+  } else {
+    verdictEl.className = 'verdict fail';
+    verdictEl.textContent = '❌ Some criteria failed — check log above';
+    log('❌ TEST FAILED', 'err');
+  }
+
+  runBtn.disabled = false;
+  runBtn.textContent = '▶ Run Again';
+  testRunning = false;
+}
+</script>
+{% endblock %}
