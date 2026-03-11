@@ -10,7 +10,9 @@ __pycache__/
 db.sqlite3
 media/
 staticfiles/
-
+*.ctl
+*.pid
+*.sock
 # Virtualenv
 venv/
 env/

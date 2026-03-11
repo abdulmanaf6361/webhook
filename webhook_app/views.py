@@ -1,4 +1,5 @@
 import json
+import uuid
 import logging
 import time
 
@@ -243,17 +244,30 @@ def webhook_toggle(request, webhook_id):
 def ingest_event(request):
     """
     POST /api/events/ingest/
-    Internal endpoint — accepts an event and fans out deliveries.
-    Body: { user_id, event_type, payload }
+    Zero-DB-write hot path — returns in <5ms.
+
+    Flow:
+      1. Validate request (no DB)
+      2. Look up matching active webhooks for this user (one indexed DB read)
+      3. Generate UUIDs for event + each delivery attempt
+      4. Push one message per (event x webhook) onto Redis INGEST_QUEUE_KEY
+      5. Return immediately
+
+    flush_ingest_queue (Beat, every 2s) then bulk-creates Event +
+    DeliveryAttempt rows and enqueues deliveries into fair per-user queues.
+
+    The webhook lookup (step 2) is a fast indexed read — we need it here to
+    know how many deliveries to generate and to get webhook IDs/URLs without
+    a later DB round-trip from the worker.
     """
     try:
         body = json.loads(request.body)
     except (json.JSONDecodeError, ValueError):
         return json_error('Invalid JSON body')
 
-    user_id = body.get('user_id', '').strip()
+    user_id    = body.get('user_id',    '').strip()
     event_type = body.get('event_type', '').strip()
-    payload = body.get('payload', {})
+    payload    = body.get('payload',    {})
 
     if not user_id:
         return json_error('user_id is required')
@@ -264,29 +278,38 @@ def ingest_event(request):
     if not isinstance(payload, dict):
         return json_error('payload must be a JSON object')
 
-    # Persist event
-    event = Event.objects.create(user_id=user_id, event_type=event_type, payload=payload)
+    # One indexed read — only active webhooks for this user
+    matching_webhooks = [
+        wh for wh in Webhook.objects.filter(user_id=user_id, is_active=True)
+        if wh.subscribes_to(event_type)
+    ]
 
-    # Fan out to all active webhooks subscribed to this event type
-    matching_webhooks = Webhook.objects.filter(
-        user_id=user_id,
-        is_active=True,
-    )
+    event_id       = str(uuid.uuid4())
     delivery_count = 0
-    for webhook in matching_webhooks:
-        if webhook.subscribes_to(event_type):
-            attempt = DeliveryAttempt.objects.create(webhook=webhook, event=event, status='pending')
-            # Enqueue delivery task
-            from .tasks import deliver_webhook
-            deliver_webhook.delay(str(attempt.id))
-            delivery_count += 1
 
-    logger.info(f"Event {event.id} ({event_type}) ingested for user {user_id}, fanning out to {delivery_count} webhooks")
+    from .tasks import push_ingest_message
+    for webhook in matching_webhooks:
+        delivery_id = str(uuid.uuid4())
+        push_ingest_message(
+            event_id=event_id,
+            user_id=user_id,
+            event_type=event_type,
+            payload=payload,
+            webhook_id=str(webhook.id),
+            delivery_id=delivery_id,
+        )
+        delivery_count += 1
+
+    logger.info(
+        f"Ingest queued: event={event_id} type={event_type} "
+        f"user={user_id} fanout={delivery_count}"
+    )
     return json_success({
-        'event_id': str(event.id),
-        'event_type': event_type,
-        'user_id': user_id,
+        'event_id':         event_id,
+        'event_type':       event_type,
+        'user_id':          user_id,
         'deliveries_queued': delivery_count,
+        'note':             'persisted async — appears in DB within ~2s',
     }, status=201)
 
 

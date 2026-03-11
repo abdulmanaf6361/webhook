@@ -1,8 +1,26 @@
 version: '3.9'
 
+# Common environment shared by all app services
+x-app-env: &app-env
+  DJANGO_SETTINGS_MODULE: webhook.settings
+  REDIS_URL:              redis://redis:6379/0
+  DEFAULT_RATE_LIMIT:     "10"
+  # ── gevent pool for non-blocking Postgres under gevent ──
+  USE_GEVENT_POOL: "true"
+  # ── Celery ──
+  CELERY_CONCURRENCY: "1000"
+
+x-app-base: &app-base
+  build: .
+  volumes:
+    - .:/app
+  depends_on:
+    redis:
+      condition: service_healthy
+
 services:
 
-  # ── Redis (broker + rate limit state) ────────────────────────────────────────
+  # ── Redis ─────────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     ports:
@@ -13,65 +31,52 @@ services:
       timeout: 3s
       retries: 5
 
-  # ── Django Web API + UI ───────────────────────────────────────────────────────
+  # ── Django web (Gunicorn + gevent workers) ────────────────────────────────────
+  # 4 gevent workers × 1000 greenlets = handles burst publishes without queueing.
+  # gevent workers + USE_GEVENT_POOL=true → non-blocking Postgres connections.
   web:
-    build: .
+    <<: *app-base
     environment:
-      - SERVICE_TYPE=web
-      - REDIS_URL=redis://redis:6379/0
-      - DJANGO_SETTINGS_MODULE=webhook.settings
-      - DEFAULT_RATE_LIMIT=10
-      - DB_PATH=/data/db.sqlite3
-    volumes:
-      - sqlite_data:/data
-      - .:/app
+      <<: *app-env
+      SERVICE_TYPE: web
     ports:
       - "8000:8000"
-    depends_on:
-      redis:
-        condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/internal/rate-limit/')"]
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/internal/rate-limit/')"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ── Celery Worker (delivery executor) ────────────────────────────────────────
+  # ── Celery worker (gevent pool, 1000 concurrent greenlets) ────────────────────
+  # Handles: execute_delivery (HTTP POST) in parallel
+  # gevent: 1000 in-flight HTTP POSTs, all yielding while waiting on network
   worker:
-    build: .
+    <<: *app-base
     environment:
-      - SERVICE_TYPE=worker
-      - REDIS_URL=redis://redis:6379/0
-      - DJANGO_SETTINGS_MODULE=webhook.settings
-      - DEFAULT_RATE_LIMIT=10
-      - DB_PATH=/data/db.sqlite3
-    volumes:
-      - sqlite_data:/data
-      - .:/app
+      <<: *app-env
+      SERVICE_TYPE: worker
     depends_on:
       redis:
         condition: service_healthy
       web:
         condition: service_healthy
 
-  # ── Celery Beat (periodic task scheduler: drains queue every second) ─────────
+  # ── Celery Beat ───────────────────────────────────────────────────────────────
+  # Schedules: process_delivery_queue (1s), flush_ingest_queue (2s),
+  #            flush_writeback_queue (2s)
   beat:
-    build: .
+    <<: *app-base
     environment:
-      - SERVICE_TYPE=beat
-      - REDIS_URL=redis://redis:6379/0
-      - DJANGO_SETTINGS_MODULE=webhook.settings
-      - DB_PATH=/data/db.sqlite3
-    volumes:
-      - sqlite_data:/data
-      - .:/app
+      <<: *app-env
+      SERVICE_TYPE: beat
     depends_on:
       redis:
         condition: service_healthy
       web:
         condition: service_healthy
 
-  # ── Mock Receiver (customer endpoint simulator) ───────────────────────────────
+  # ── Mock Receiver ─────────────────────────────────────────────────────────────
   mock_receiver:
     build:
       context: ./mock_receiver
@@ -81,4 +86,4 @@ services:
       - PORT=9000
 
 volumes:
-  sqlite_data:
+  pg_data:
