@@ -24,7 +24,8 @@
         <label class="form-label">Target URL *</label>
         <input type="url" class="form-input" id="url" name="url"
                value="{% if webhook %}{{ webhook.url }}{% endif %}"
-               placeholder="https://your-endpoint.com/webhooks"
+               placeholder="http://mock_receiver:9000/"
+               value="http://mock_receiver:9000/"
                required />
         <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px">The URL that will receive POST requests when events occur.</div>
       </div>
