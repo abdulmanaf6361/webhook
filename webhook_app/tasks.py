@@ -37,8 +37,14 @@ def set_rate_limit(deliveries_per_second: int):
         pass
 
 
-def enqueue_delivery(delivery_id: str):
-    get_redis().rpush(DELIVERY_QUEUE_KEY, str(delivery_id))
+def enqueue_delivery(delivery_id: str, user_id: str):
+    r = get_redis()
+
+    key = f"webhook:user:{user_id}:queue"
+
+    r.rpush(key, delivery_id)
+
+    r.sadd("webhook:active_users", user_id)
 
 
 def get_queue_length() -> int:
@@ -50,26 +56,44 @@ def get_queue_length() -> int:
 
 @shared_task(name='webhook_app.tasks.drain_delivery_queue')
 def drain_delivery_queue():
-    """
-    Fires every 1s via Celery Beat.
-    Pops exactly `rate` ids from the Redis list and dispatches one Celery
-    task per id. This is the sole rate-limiting gate — nothing else needed.
-    """
-    rate = get_rate_limit()
+
     r = get_redis()
+    rate = get_rate_limit()
 
-    pipe = r.pipeline()
-    for _ in range(rate):
-        pipe.lpop(DELIVERY_QUEUE_KEY)
-    ids = [x for x in pipe.execute() if x]
+    users = list(r.smembers("webhook:active_users"))
 
-    for delivery_id in ids:
-        execute_delivery.delay(delivery_id)
+    if not users:
+        return
 
-    remaining = get_queue_length()
-    if ids or remaining:
-        logger.info(f"drain: dispatched={len(ids)} rate={rate}/s remaining={remaining}")
+    dispatched = 0
+    user_index = 0
+    user_count = len(users)
 
+    while dispatched < rate and users:
+
+        user = users[user_index % user_count]
+        key = f"webhook:user:{user}:queue"
+
+        delivery_id = r.lpop(key)
+
+        if delivery_id:
+            execute_delivery.delay(delivery_id)
+            dispatched += 1
+        else:
+            r.srem("webhook:active_users", user)
+            users.remove(user)
+            user_count = len(users)
+            if user_count == 0:
+                break
+            continue
+
+        user_index += 1
+
+    remaining = sum(r.llen(f"webhook:user:{u}:queue") for u in users)
+
+    logger.info(
+        f"drain: dispatched={dispatched} rate={rate}/s remaining={remaining}"
+    )   
 
 @shared_task(name='webhook_app.tasks.execute_delivery', bind=True, max_retries=3)
 def execute_delivery(self, delivery_id: str):

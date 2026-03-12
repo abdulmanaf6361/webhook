@@ -1,442 +1,153 @@
 {% extends "webhook_app/base.html" %}
-{% block title %}Rate Limit Test — Part B{% endblock %}
-
-{% block extra_head %}
-<style>
-  .test-layout { display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem; align-items: start; }
-  @media(max-width:860px){ .test-layout { grid-template-columns: 1fr; } }
-
-  .card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 1rem; }
-  .card-title { font-size: 0.75rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 14px; }
-
-  .field { margin-bottom: 12px; }
-  .field label { font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 5px; }
-  .field input {
-    width: 100%; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 6px; color: var(--text); padding: 7px 10px; font-size: 0.85rem; box-sizing: border-box;
-  }
-  .field input:focus { outline: none; border-color: var(--accent); }
-
-  .rate-pill {
-    background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.25);
-    border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between;
-    align-items: center; margin-bottom: 1rem;
-  }
-  .rate-pill .lbl { font-size: 0.78rem; color: var(--text-muted); }
-  .rate-pill .val { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
-
-  .btn-primary {
-    width: 100%; padding: 11px; font-size: 0.9rem; font-weight: 600;
-    background: var(--accent); color: #fff; border: none; border-radius: 8px;
-    cursor: pointer; transition: opacity 0.15s;
-  }
-  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
-  .btn-primary:hover:not(:disabled) { opacity: 0.85; }
-
-  /* Steps */
-  .steps { display: flex; flex-direction: column; gap: 6px; margin-top: 1rem; }
-  .step {
-    display: flex; gap: 10px; align-items: flex-start;
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 12px; font-size: 0.83rem;
-    transition: border-color 0.2s, background 0.2s;
-  }
-  .step.active  { border-color: var(--accent); background: rgba(99,102,241,0.06); }
-  .step.pass    { border-color: #22c55e; background: rgba(34,197,94,0.05); }
-  .step.fail    { border-color: #ef4444; background: rgba(239,68,68,0.05); }
-  .step-icon { width: 18px; text-align: center; flex-shrink: 0; font-size: 0.9rem; }
-  .step-name { font-weight: 600; }
-  .step-detail { font-size: 0.76rem; color: var(--text-muted); font-family: monospace; margin-top: 2px; }
-
-  /* Results panel */
-  .counters { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 1rem; }
-  .counter { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; text-align: center; }
-  .counter .num { font-size: 1.8rem; font-weight: 700; }
-  .counter .lbl { font-size: 0.72rem; color: var(--text-muted); margin-top: 3px; }
-  .counter.b1 .num { color: var(--accent); }
-  .counter.b2 .num { color: #22c55e; }
-
-  /* Timeline */
-  .tl-wrap { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 1rem; }
-  .tl-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 5px; }
-  .tl-track { height: 24px; background: var(--surface); border-radius: 5px; overflow: hidden; margin-bottom: 4px; position: relative; }
-  .tl-bar { height: 100%; border-radius: 5px; display: flex; align-items: center; padding-left: 8px; font-size: 0.7rem; font-weight: 600; color: #fff; white-space: nowrap; transition: width 0.4s ease; min-width: 4px; }
-  .tl-bar.b1 { background: rgba(99,102,241,0.75); }
-  .tl-bar.b2 { background: rgba(34,197,94,0.75); }
-  .tl-info { font-size: 0.72rem; color: var(--text-muted); font-family: monospace; margin-bottom: 10px; }
-
-  /* Verdict */
-  .verdict { padding: 14px; border-radius: 8px; font-weight: 600; text-align: center; margin-bottom: 1rem; display: none; }
-  .verdict.pass { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.35); color: #22c55e; }
-  .verdict.fail { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.35); color: #ef4444; }
-
-  /* Log */
-  .log {
-    background: #070a10; border: 1px solid var(--border); border-radius: 8px;
-    padding: 12px; font-family: monospace; font-size: 0.76rem;
-    height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
-  }
-  .log .ok   { color: #22c55e; }
-  .log .err  { color: #ef4444; }
-  .log .info { color: #818cf8; }
-  .log .warn { color: #f59e0b; }
-  .log .dim  { color: #475569; }
-</style>
-{% endblock %}
+{% block title %}Rate Limit Monitor{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div>
-    <div class="page-title">⚡ Part B — Rate Limit Test</div>
-    <div class="page-subtitle">Verifies rate limiting, live config update, and zero delivery loss</div>
-  </div>
-</div>
 
-<div class="test-layout">
+<h2>⚡ Rate Limit Monitor</h2>
 
-  <!-- Left: config + steps -->
-  <div>
-    <div class="rate-pill">
-      <div>
-        <div class="lbl">Current rate limit</div>
-        <div class="val" id="live-rate">…</div>
-      </div>
-      <button class="btn btn-secondary btn-sm" onclick="refreshRate()">↻ Refresh</button>
-    </div>
+Batch Size <input id="count" value="20"><br>
+Rate 1 (/s) <input id="rate1" value="5"><br>
+Rate 2 (/s) <input id="rate2" value="20"><br>
+User <input id="user" value="rate_test"><br>
 
-    <div class="card">
-      <div class="card-title">Test Configuration</div>
-      <div class="field"><label>Events per batch</label><input id="cfg-count" type="number" value="20" min="5" max="100"></div>
-      <div class="field"><label>Batch 1 rate (slow, /s)</label><input id="cfg-rate1" type="number" value="5" min="1" max="50"></div>
-      <div class="field"><label>Batch 2 rate (fast, /s)</label><input id="cfg-rate2" type="number" value="20" min="1" max="100"></div>
-      <div class="field"><label>User ID</label><input id="cfg-user" type="text" value="partb_test_user"></div>
-      <div class="field"><label>Webhook URL</label><input id="cfg-webhook" type="text" value="http://mock_receiver:9000/"></div>
-      <button class="btn-primary" id="run-btn" onclick="runTest()">▶ Run Test</button>
-    </div>
+<br>
+<button onclick="runTest()">Run Test</button>
 
-    <div class="steps" id="steps">
-      <div class="step" id="s0"><span class="step-icon">○</span><div><div class="step-name">Pre-flight</div><div class="step-detail" id="s0d">Check API + receiver reachable</div></div></div>
-      <div class="step" id="s1"><span class="step-icon">○</span><div><div class="step-name">Register webhook</div><div class="step-detail" id="s1d">Create endpoint for test user</div></div></div>
-      <div class="step" id="s2"><span class="step-icon">○</span><div><div class="step-name">Set rate → <span id="sr1">5</span>/s, publish batch 1</div><div class="step-detail" id="s2d">20 events fired concurrently</div></div></div>
-      <div class="step" id="s3"><span class="step-icon">○</span><div><div class="step-name">Wait — deliveries spread at slow rate</div><div class="step-detail" id="s3d">Poll mock receiver in real time</div></div></div>
-      <div class="step" id="s4"><span class="step-icon">○</span><div><div class="step-name">Update rate live → <span id="sr2">20</span>/s</div><div class="step-detail" id="s4d">No restart needed</div></div></div>
-      <div class="step" id="s5"><span class="step-icon">○</span><div><div class="step-name">Publish batch 2, wait (fast rate)</div><div class="step-detail" id="s5d">Expect noticeably shorter spread</div></div></div>
-      <div class="step" id="s6"><span class="step-icon">○</span><div><div class="step-name">Verify no losses</div><div class="step-detail" id="s6d">All 2×N events delivered</div></div></div>
-    </div>
-  </div>
+<br><br>
 
-  <!-- Right: live results -->
-  <div>
-    <div class="counters">
-      <div class="counter b1"><div class="num" id="cnt1">—</div><div class="lbl">Batch 1 delivered</div></div>
-      <div class="counter b2"><div class="num" id="cnt2">—</div><div class="lbl">Batch 2 delivered</div></div>
-      <div class="counter">    <div class="num" id="cntT">—</div><div class="lbl">Total / expected</div></div>
-    </div>
+<pre id="log" style="height:420px;overflow:auto;background:#111;color:#0f0;padding:10px"></pre>
 
-    <div class="tl-wrap" id="tl-wrap" style="display:none">
-      <div class="tl-label">Batch 1 — <span id="tll1">5</span>/s (slow)</div>
-      <div class="tl-track"><div class="tl-bar b1" id="tl1" style="width:0%"></div></div>
-      <div class="tl-info" id="tli1">waiting…</div>
-      <div class="tl-label">Batch 2 — <span id="tll2">20</span>/s (fast)</div>
-      <div class="tl-track"><div class="tl-bar b2" id="tl2" style="width:0%"></div></div>
-      <div class="tl-info" id="tli2">waiting…</div>
-    </div>
-
-    <div class="verdict" id="verdict"></div>
-
-    <div style="font-size:0.75rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Live Log</div>
-    <div class="log" id="log"><div class="dim">Ready. Press ▶ Run Test to begin.</div></div>
-  </div>
-</div>
-{% endblock %}
-
-{% block extra_scripts %}
 <script>
-// ── Helpers ────────────────────────────────────────────────────────────────────
-const $ = id => document.getElementById(id);
+  async function ensureWebhook(user){
 
-function log(msg, cls='') {
-  const el = $('log');
-  const d  = document.createElement('div');
-  d.className = cls;
-  d.textContent = `[${new Date().toTimeString().slice(0,8)}] ${msg}`;
-  el.appendChild(d);
-  el.scrollTop = el.scrollHeight;
-}
-function clearLog() { $('log').innerHTML = ''; }
+  await fetch("/api/webhooks/",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "X-User-Id":user
+    },
+    body:JSON.stringify({
+      url:"http://mock_receiver:9000/",
+      event_types:["request.created"]
+    })
+  })
 
-function step(id, state, detail) {
-  const el = $(id);
-  el.className = `step ${state}`;
-  const icons = { active:'⏳', pass:'✓', fail:'✗', '':'○' };
-  el.querySelector('.step-icon').textContent = icons[state] || '○';
-  if (detail != null) $(id + 'd').textContent = detail;
-}
-function resetSteps() { ['s0','s1','s2','s3','s4','s5','s6'].forEach(s => step(s,'')); }
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-async function api(method, path, body) {
-  const opts = { method, headers: {'Content-Type':'application/json'} };
-  if (body) opts.body = JSON.stringify(body);
-  const r = await fetch(path, opts);
-  return { ok: r.ok, status: r.status, data: await r.json() };
 }
 
-async function refreshRate() {
-  try {
-    const { data } = await api('GET', '/api/internal/rate-limit/');
-    $('live-rate').textContent = data.deliveries_per_second + ' /s';
-  } catch { $('live-rate').textContent = 'err'; }
-}
-refreshRate();
-setInterval(refreshRate, 5000);
-
-// ── Delivery counting via mock receiver proxy (real-time, no DB async delay) ──
-async function countDelivered(userId, sinceMs) {
-  try {
-    const r = await fetch(`/api/internal/receiver-logs/?user_id=${encodeURIComponent(userId)}`);
-    const d = await r.json();
-    const logs = d.logs || [];
-    if (!sinceMs) return logs.length;
-    return logs.filter(l => {
-      // received_at from mock receiver: "2026-03-11T23:07:09.123456" (UTC ISO)
-      try { return new Date(l.received_at + 'Z').getTime() >= sinceMs; }
-      catch { return true; }
-    }).length;
-  } catch { return 0; }
+function log(msg){
+  const el=document.getElementById("log")
+  el.textContent+=msg+"\n"
+  el.scrollTop=el.scrollHeight
 }
 
-// ── Burst publish: fire N events in parallel ───────────────────────────────────
-async function burst(n, userId, offset) {
-  const ps = Array.from({length: n}, (_, i) =>
-    fetch('/api/events/ingest/', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ user_id: userId, event_type: 'request.created', payload: {i: offset+i} })
-    }).then(r => r.ok)
-  );
-  const t0 = Date.now();
-  const results = await Promise.all(ps);
-  return { ok: results.filter(Boolean).length, elapsed: (Date.now()-t0)/1000 };
+function sleep(ms){
+  return new Promise(r=>setTimeout(r,ms))
 }
 
-// ── Poll until N delivered or timeout ─────────────────────────────────────────
-async function waitDeliveries(userId, sinceMs, expected, rate, onProgress) {
-  // Timeout: time for all deliveries + 2 extra Beat ticks + network margin
-  const timeoutMs = Math.max((expected / rate) * 1000, 3000) + 15000;
-  const deadline  = Date.now() + timeoutMs;
-  let seen = 0, first = null, last = null;
+async function setRate(rate){
 
-  while (Date.now() < deadline) {
-    const n = await countDelivered(userId, sinceMs);
-    if (n > seen) {
-      if (first === null) first = (Date.now() - sinceMs) / 1000;
-      last = (Date.now() - sinceMs) / 1000;
-      seen = n;
-      onProgress(seen);
-    }
-    if (seen >= expected) break;
-    await sleep(600);
+  await fetch("/api/internal/rate-limit/",{
+    method:"PUT",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({deliveries_per_second:rate})
+  })
+
+}
+
+async function publish(count,user){
+
+  const promises=[]
+
+  for(let i=0;i<count;i++){
+
+    promises.push(
+      fetch("/api/events/ingest/",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          user_id:user,
+          event_type:"request.created",
+          payload:{i}
+        })
+      })
+    )
+
   }
 
-  const spread = (first !== null && last !== null) ? last - first : 0;
-  return { delivered: seen, spread, first, last };
+  await Promise.all(promises)
+
 }
 
-// ── Timeline update ────────────────────────────────────────────────────────────
-function drawTimeline(barId, infoId, spread, maxSpread, first, last) {
-  const pct = maxSpread > 0 ? Math.min(100, (spread / maxSpread) * 100) : 5;
-  $(barId).style.width = Math.max(pct, 2) + '%';
-  $(barId).textContent = spread > 0.3 ? spread.toFixed(1) + 's' : '';
-  const f = first != null ? first.toFixed(1) : '?';
-  const l = last  != null ? last.toFixed(1)  : '?';
-  $(infoId).textContent = `spread: ${spread.toFixed(1)}s  |  first: +${f}s  |  last: +${l}s`;
-}
 
-// ── Main test ──────────────────────────────────────────────────────────────────
-let running = false;
+async function monitor(expected){
 
-async function runTest() {
-  if (running) return;
-  running = true;
+  while(true){
 
-  $('run-btn').disabled = true;
-  $('run-btn').textContent = '⏳ Running…';
-  clearLog();
-  resetSteps();
-  $('cnt1').textContent = '—';
-  $('cnt2').textContent = '—';
-  $('cntT').textContent = '—';
-  $('verdict').style.display = 'none';
-  $('tl-wrap').style.display = 'none';
-  $('tl1').style.width = '0%';
-  $('tl2').style.width = '0%';
+    const r=await fetch("/api/internal/queue-status/")
+    const d=await r.json()
 
-  const COUNT = parseInt($('cfg-count').value) || 20;
-  const RATE1 = parseInt($('cfg-rate1').value) || 5;
-  const RATE2 = parseInt($('cfg-rate2').value) || 20;
-  const USER  = $('cfg-user').value.trim()    || 'partb_test_user';
-  const WHURL = $('cfg-webhook').value.trim() || 'http://mock_receiver:9000/';
+    const t=new Date().toLocaleTimeString()
 
-  $('sr1').textContent = RATE1; $('sr2').textContent = RATE2;
-  $('tll1').textContent = RATE1; $('tll2').textContent = RATE2;
+    log(`${t} | queue=${d.queue} | delivered=${d.delivered} | workers=${d.busy_workers}/${d.max_workers}`)
 
-  let webhookId = null, passed = true;
-  let r1 = null, r2 = null;
-
-  try {
-    // Step 0: Pre-flight
-    step('s0', 'active');
-    log('Checking API + mock receiver…', 'info');
-    const check = await api('GET', '/api/internal/rate-limit/');
-    if (!check.ok) throw new Error('API not reachable');
-    log(`✓ API reachable — rate: ${check.data.deliveries_per_second}/s`, 'ok');
-    const proxyCheck = await api('GET', '/api/internal/receiver-logs/?user_id=_preflight');
-    if (!proxyCheck.ok) throw new Error('Receiver proxy not reachable');
-    log('✓ Mock receiver proxy reachable', 'ok');
-    step('s0', 'pass', 'All systems online');
-
-    // Step 1: Register webhook
-    step('s1', 'active');
-    log(`Registering webhook for user: ${USER}`, 'info');
-    const reg = await fetch('/api/webhooks/', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-User-Id': USER},
-      body: JSON.stringify({ url: WHURL, event_types: ['request.created'] })
-    });
-    const regData = await reg.json();
-    if (!reg.ok) throw new Error(`Webhook registration failed: ${JSON.stringify(regData)}`);
-    webhookId = regData.id;
-    log(`✓ Webhook: ${webhookId.slice(0,12)}…`, 'ok');
-    step('s1', 'pass', `ID: ${webhookId.slice(0,8)}…`);
-
-    // Step 2: Set rate1, publish batch 1
-    step('s2', 'active');
-    log(`Setting rate limit → ${RATE1}/s`, 'info');
-    await api('PUT', '/api/internal/rate-limit/', { deliveries_per_second: RATE1 });
-    await refreshRate();
-    log(`✓ Rate set to ${RATE1}/s`, 'ok');
-    await sleep(1500); // let Beat tick see the new rate
-
-    const since1Ms = Date.now();
-    log(`Publishing ${COUNT} events in parallel…`, 'info');
-    const pub1 = await burst(COUNT, USER, 0);
-    log(`✓ Published ${pub1.ok}/${COUNT} in ${pub1.elapsed.toFixed(2)}s`, pub1.ok === COUNT ? 'ok' : 'warn');
-    step('s2', 'pass', `${pub1.ok} published in ${pub1.elapsed.toFixed(2)}s`);
-
-    // Step 3: Wait for batch 1
-    step('s3', 'active');
-    log(`Waiting for deliveries at ${RATE1}/s (expect ~${(COUNT/RATE1).toFixed(0)}s spread)…`, 'info');
-    $('tl-wrap').style.display = 'block';
-
-    r1 = await waitDeliveries(USER, since1Ms, COUNT, RATE1, n => {
-      $('cnt1').textContent = `${n}/${COUNT}`;
-    });
-
-    $('cnt1').textContent = `${r1.delivered}/${COUNT}`;
-    drawTimeline('tl1','tli1', r1.spread, Math.max(r1.spread, COUNT/RATE1), r1.first, r1.last);
-
-    const minSpread1 = (COUNT / RATE1) * 0.35; // allow 35% tolerance
-    log(`Batch 1: ${r1.delivered}/${COUNT} delivered | spread ${r1.spread.toFixed(1)}s`, r1.delivered === COUNT ? 'ok':'err');
-
-    if (r1.delivered !== COUNT) {
-      step('s3', 'fail', `Only ${r1.delivered}/${COUNT} delivered`);
-      passed = false;
-    } else if (r1.spread < minSpread1) {
-      log(`⚠ Spread (${r1.spread.toFixed(1)}s) shorter than expected min (${minSpread1.toFixed(1)}s)`, 'warn');
-      step('s3', 'pass', `${r1.delivered}/${COUNT} ✓ | spread ${r1.spread.toFixed(1)}s ⚠`);
-    } else {
-      log(`✓ Rate limiting confirmed — ${r1.spread.toFixed(1)}s spread at ${RATE1}/s`, 'ok');
-      step('s3', 'pass', `${r1.delivered}/${COUNT} ✓ | spread ${r1.spread.toFixed(1)}s ✓`);
+    if(d.delivered>=expected && d.queue===0){
+      log("✔ batch complete\n")
+      return
     }
 
-    // Step 4: Update rate live
-    step('s4', 'active');
-    log(`Updating rate live → ${RATE2}/s…`, 'info');
-    await api('PUT', '/api/internal/rate-limit/', { deliveries_per_second: RATE2 });
-    await refreshRate();
-    log(`✓ Rate updated to ${RATE2}/s (no restart)`, 'ok');
-    step('s4', 'pass', `Updated to ${RATE2}/s instantly`);
-    await sleep(1500);
+    await sleep(500)
 
-    // Step 5 + 6: Publish batch 2, wait
-    step('s5', 'active');
-    const since2Ms = Date.now();
-    log(`Publishing ${COUNT} more events in parallel…`, 'info');
-    const pub2 = await burst(COUNT, USER, COUNT);
-    log(`✓ Published ${pub2.ok}/${COUNT} in ${pub2.elapsed.toFixed(2)}s`, pub2.ok === COUNT ? 'ok' : 'warn');
-    step('s5', 'pass', `${pub2.ok} published`);
-
-    step('s6', 'active');
-    log(`Waiting for deliveries at ${RATE2}/s (expect ~${(COUNT/RATE2).toFixed(1)}s spread)…`, 'info');
-
-    r2 = await waitDeliveries(USER, since2Ms, COUNT, RATE2, n => {
-      $('cnt2').textContent = `${n}/${COUNT}`;
-    });
-
-    $('cnt2').textContent = `${r2.delivered}/${COUNT}`;
-
-    const maxSpread = Math.max(r1.spread, r2.spread, COUNT/RATE1, 1);
-    drawTimeline('tl1','tli1', r1.spread, maxSpread, r1.first, r1.last);
-    drawTimeline('tl2','tli2', r2.spread, maxSpread, r2.first, r2.last);
-
-    const total  = r1.delivered + r2.delivered;
-    const noLoss = total === COUNT * 2;
-    $('cntT').textContent = `${total}/${COUNT*2}`;
-
-    log(`Batch 2: ${r2.delivered}/${COUNT} delivered | spread ${r2.spread.toFixed(1)}s`, r2.delivered === COUNT ? 'ok':'err');
-
-    if (r2.delivered !== COUNT) {
-      step('s6', 'fail', `Only ${r2.delivered}/${COUNT} delivered`);
-      passed = false;
-    } else {
-      const faster = r2.spread < r1.spread * 0.7;
-      const speedup = r1.spread > 0 ? (r1.spread / Math.max(r2.spread, 0.1)).toFixed(1) : '?';
-      if (!faster) {
-        log(`⚠ Batch 2 (${r2.spread.toFixed(1)}s) not clearly faster than batch 1 (${r1.spread.toFixed(1)}s)`, 'warn');
-        step('s6', 'pass', `${r2.delivered}/${COUNT} ✓ | spread ${r2.spread.toFixed(1)}s ⚠`);
-      } else {
-        log(`✓ ${speedup}× faster: ${r2.spread.toFixed(1)}s vs ${r1.spread.toFixed(1)}s`, 'ok');
-        step('s6', 'pass', `${r2.delivered}/${COUNT} ✓ | ${speedup}× faster ✓`);
-      }
-    }
-
-    if (!noLoss) { passed = false; log(`✗ LOSSES DETECTED: ${total}/${COUNT*2}`, 'err'); }
-    else log(`✓ Zero losses: all ${total} events delivered`, 'ok');
-
-  } catch(e) {
-    log(`✗ Test error: ${e.message}`, 'err');
-    passed = false;
   }
 
-  // Cleanup
-  if (webhookId) {
-    try {
-      await fetch(`/api/webhooks/${webhookId}/`, {
-        method: 'DELETE', headers: {'X-User-Id': $('cfg-user').value.trim()}
-      });
-      log(`Cleaned up webhook`, 'dim');
-    } catch {}
-  }
-
-  // Verdict
-  const v = $('verdict');
-  v.style.display = 'block';
-  if (passed && r1 && r2) {
-    const speedup = r1.spread > 0 ? (r1.spread / Math.max(r2.spread, 0.1)).toFixed(1) : '?';
-    v.className = 'verdict pass';
-    v.innerHTML = `✅ ALL CRITERIA PASSED &nbsp;·&nbsp; Batch 1 (${RATE1}/s): ${r1.spread.toFixed(1)}s spread &nbsp;·&nbsp; Batch 2 (${RATE2}/s): ${r2.spread.toFixed(1)}s spread &nbsp;·&nbsp; ${speedup}× speedup`;
-    log('✅ ALL ACCEPTANCE CRITERIA PASSED', 'ok');
-  } else {
-    v.className = 'verdict fail';
-    v.textContent = '❌ Test failed — check log above';
-    log('❌ TEST FAILED', 'err');
-  }
-
-  $('run-btn').disabled = false;
-  $('run-btn').textContent = '▶ Run Again';
-  running = false;
 }
+
+async function runTest(){
+
+  document.getElementById("log").textContent=""
+
+  const count=parseInt(document.getElementById("count").value)
+  const rate1=parseInt(document.getElementById("rate1").value)
+  const rate2=parseInt(document.getElementById("rate2").value)
+  const user=document.getElementById("user").value
+
+  log("Resetting old test data")
+
+  await fetch("/api/internal/reset-test/",{method:"POST"})
+
+  log("Batch1 start")
+
+  log("Registering webhook")
+
+  await ensureWebhook(user)
+
+  log("Batch1 start")
+
+  await setRate(rate1)
+
+  log("Publishing "+count+" events")
+  await publish(count,user)
+  log("Events inserted")
+
+  await monitor(count)
+
+  log("waiting 5 seconds\n")
+
+  await sleep(5000)
+
+  log("Batch2 start")
+
+  await setRate(rate2)
+
+  log("Publishing "+count+" events")
+  await publish(count,user)
+  log("Events inserted")
+
+  await monitor(count*2)
+
+  log("TEST COMPLETE")
+
+}
+
 </script>
+
 {% endblock %}

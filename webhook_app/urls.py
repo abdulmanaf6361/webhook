@@ -25,7 +25,9 @@ urlpatterns = [
     path('api/internal/rate-limit/', views.rate_limit_config, name='api_rate_limit'),
     path('api/internal/receiver-logs/', views.proxy_receiver_logs, name='api_receiver_logs'),
     path('api/internal/delivery-count/', views.delivery_count, name='api_delivery_count'),
+    path('api/internal/queue-status/', views.queue_status),
 
     # SSE test runner (used by /test/)
     path('api/test/run/', views.test_run_sse, name='test_run_sse'),
+    path('api/internal/reset-test/', views.reset_test_data),
 ]
