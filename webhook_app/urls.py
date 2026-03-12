@@ -9,7 +9,8 @@ urlpatterns = [
     path('webhooks/<uuid:webhook_id>/edit/', views.webhook_edit, name='webhook_edit'),
     path('deliveries/', views.deliveries_view, name='deliveries'),
     path('events/', views.events_view, name='events'),
-    path('test/rate-limit/', views.test_ratelimit_view, name='test_ratelimit'),
+    path('test/', views.test_page, name='test_page'),
+    path('test/rate-limit/', views.test_ratelimit_view, name='test_ratelimit'),  # Part B
 
     # Webhook CRUD API
     path('api/webhooks/', views.webhooks_list_create, name='api_webhooks'),
@@ -20,11 +21,11 @@ urlpatterns = [
     # Event ingestion
     path('api/events/ingest/', views.ingest_event, name='api_ingest_event'),
 
-    # Internal config
+    # Internal config + monitoring
     path('api/internal/rate-limit/', views.rate_limit_config, name='api_rate_limit'),
     path('api/internal/receiver-logs/', views.proxy_receiver_logs, name='api_receiver_logs'),
     path('api/internal/delivery-count/', views.delivery_count, name='api_delivery_count'),
 
-    # Test runner SSE
+    # SSE test runner (used by /test/)
     path('api/test/run/', views.test_run_sse, name='test_run_sse'),
 ]

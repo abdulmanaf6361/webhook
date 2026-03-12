@@ -1,14 +1,9 @@
 version: '3.9'
 
-# Common environment shared by all app services
 x-app-env: &app-env
   DJANGO_SETTINGS_MODULE: webhook.settings
   REDIS_URL:              redis://redis:6379/0
   DEFAULT_RATE_LIMIT:     "10"
-  # ── gevent pool for non-blocking Postgres under gevent ──
-  USE_GEVENT_POOL: "true"
-  # ── Celery ──
-  CELERY_CONCURRENCY: "1000"
 
 x-app-base: &app-base
   build: .
@@ -20,7 +15,6 @@ x-app-base: &app-base
 
 services:
 
-  # ── Redis ─────────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     ports:
@@ -31,9 +25,6 @@ services:
       timeout: 3s
       retries: 5
 
-  # ── Django web (Gunicorn + gevent workers) ────────────────────────────────────
-  # 4 gevent workers × 1000 greenlets = handles burst publishes without queueing.
-  # gevent workers + USE_GEVENT_POOL=true → non-blocking Postgres connections.
   web:
     <<: *app-base
     environment:
@@ -48,9 +39,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Celery worker (gevent pool, 1000 concurrent greenlets) ────────────────────
-  # Handles: execute_delivery (HTTP POST) in parallel
-  # gevent: 1000 in-flight HTTP POSTs, all yielding while waiting on network
   worker:
     <<: *app-base
     environment:
@@ -62,9 +50,6 @@ services:
       web:
         condition: service_healthy
 
-  # ── Celery Beat ───────────────────────────────────────────────────────────────
-  # Schedules: process_delivery_queue (1s), flush_ingest_queue (2s),
-  #            flush_writeback_queue (2s)
   beat:
     <<: *app-base
     environment:
@@ -76,7 +61,6 @@ services:
       web:
         condition: service_healthy
 
-  # ── Mock Receiver ─────────────────────────────────────────────────────────────
   mock_receiver:
     build:
       context: ./mock_receiver
@@ -84,6 +68,3 @@ services:
       - "9000:9000"
     environment:
       - PORT=9000
-
-volumes:
-  pg_data:

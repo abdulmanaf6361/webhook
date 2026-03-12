@@ -15,9 +15,6 @@ COPY . .
 # Create directory for SQLite DB
 RUN mkdir -p /data && chown -R app:app /data
 
-# Collect static files
-RUN python manage.py collectstatic --noinput --settings=webhook.settings || true
-
 # Ensure app files owned by non-root user
 RUN chown -R app:app /app
 

@@ -72,31 +72,16 @@ TEMPLATES = [
 WSGI_APPLICATION = 'webhook.wsgi.application'
 
 
-
-# ── Database: PostgreSQL with gevent connection pool ──────────────────────────
-# django-db-geventpool provides non-blocking Postgres connections under gevent.
-# With gevent workers, standard psycopg2 would block the entire event loop.
-# The pool is per-process: 4 Gunicorn workers x MAX_CONNS=10 = 40 total connections.
-_USE_GEVENT_POOL = os.environ.get('USE_GEVENT_POOL', 'true').lower() == 'true'
-
+# ── Database: PostgreSQL (RDS) ─────────────────────────────────────────────────
 DATABASES = {
     'default': {
-        'ENGINE': (
-            'django_db_geventpool.backends.postgresql_psycopg2'
-            if _USE_GEVENT_POOL
-            else 'django.db.backends.postgresql'
-        ),
+        'ENGINE':   'django.db.backends.postgresql',
         'NAME':     os.environ.get('DB_NAME',     'atomicwork_db'),
         'USER':     os.environ.get('DB_USER',     'atomicwork'),
         'PASSWORD': os.environ.get('DB_PASSWORD', 'atomicwork'),
         'HOST':     os.environ.get('DB_HOST',     '13.203.169.251'),
         'PORT':     os.environ.get('DB_PORT',     '5432'),
-        'CONN_MAX_AGE': 0,  # must be 0 — geventpool manages lifetime
-        'OPTIONS': {
-            # Pool size per process. Keep modest — Postgres has a max_connections limit.
-            'MAX_CONNS':   int(os.environ.get('DB_MAX_CONNS',   '10')),
-            'REUSE_CONNS': int(os.environ.get('DB_REUSE_CONNS', '10')),
-        },
+        'CONN_MAX_AGE': 60,
     }
 }
 
@@ -133,6 +118,7 @@ USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
+
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
@@ -142,56 +128,27 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ── Redis ──────────────────────────────────────────────────────────────────────
 REDIS_URL = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
-
+ 
 # ── Celery ─────────────────────────────────────────────────────────────────────
-CELERY_BROKER_URL         = REDIS_URL
-CELERY_RESULT_BACKEND     = REDIS_URL
-CELERY_ACCEPT_CONTENT     = ['json']
-CELERY_TASK_SERIALIZER    = 'json'
-CELERY_RESULT_SERIALIZER  = 'json'
-CELERY_TIMEZONE           = 'Asia/Kolkata'
-
-# gevent: 1000 concurrent greenlets on 4 cores — all I/O runs concurrently.
-# Each greenlet yields while waiting on HTTP/Postgres, so 1000 in-flight at once.
-CELERY_WORKER_CONCURRENCY         = int(os.environ.get('CELERY_CONCURRENCY', '1000'))
-CELERY_WORKER_PREFETCH_MULTIPLIER = 1     # don't hoard tasks
-CELERY_TASK_ACKS_LATE             = True  # ack only after task completes (safer)
-
-# ── Celery Beat schedule ───────────────────────────────────────────────────────
+CELERY_BROKER_URL        = REDIS_URL
+CELERY_RESULT_BACKEND    = REDIS_URL
+CELERY_ACCEPT_CONTENT    = ['json']
+CELERY_TASK_SERIALIZER   = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE          = 'Asia/Kolkata'
+CELERY_TASK_ACKS_LATE    = True
+ 
+# Regular prefork workers — no gevent needed at this scale
+CELERY_WORKER_CONCURRENCY         = int(os.environ.get('CELERY_CONCURRENCY', '8'))
+CELERY_WORKER_PREFETCH_MULTIPLIER = 4
 from datetime import timedelta
+# Beat: one task fires every second, pops `rate` ids, dispatches that many tasks
 CELERY_BEAT_SCHEDULE = {
-    # Drain the fair delivery queue every second (rate-limited)
-    'process-delivery-queue': {
-        'task': 'webhook_app.tasks.process_delivery_queue',
-        'schedule': timedelta(milliseconds=100),
-    },
-    # Bulk-flush ingest queue → DB (Event + DeliveryAttempt rows)
-    'flush-ingest-queue': {
-        'task': 'webhook_app.tasks.flush_ingest_queue',
-        'schedule': timedelta(seconds=2),
-    },
-    # Bulk-flush delivery write-back queue → DB (status updates)
-    'flush-writeback-queue': {
-        'task': 'webhook_app.tasks.flush_writeback_queue',
-        'schedule': timedelta(seconds=2),
+    'drain-delivery-queue': {
+        'task':     'webhook_app.tasks.drain_delivery_queue',
+        'schedule': timedelta(seconds=1),
     },
 }
-CELERY_WORKER_CONCURRENCY = 1000
-CELERY_WORKER_PREFETCH_MULTIPLIER = 1
-
-CELERY_TASK_ACKS_LATE = True
-CELERY_TASK_REJECT_ON_WORKER_LOST = True
+ 
 # ── Rate limiting ──────────────────────────────────────────────────────────────
-DEFAULT_RATE_LIMIT    = int(os.environ.get('DEFAULT_RATE_LIMIT', '10'))
-RATE_LIMIT_REDIS_KEY  = 'webhook:rate_limit'
-RATE_LIMIT_BUCKET_KEY = 'webhook:rate_bucket'
-
-# ── Redis queue keys ───────────────────────────────────────────────────────────
-# Async ingest: POST /ingest/ pushes here, no DB write until flush_ingest_queue runs
-INGEST_QUEUE_KEY    = 'webhook:ingest_queue'
-# Write-back: after HTTP POST result is pushed here, flushed to DB in bulk
-WRITEBACK_QUEUE_KEY = 'webhook:writeback_queue'
-
-# ── Fair delivery queues (Part C) ─────────────────────────────────────────────
-USER_QUEUE_KEY_PREFIX = 'webhook:user_queue:'
-FAIRNESS_QUEUE_KEY    = 'webhook:fair_queue'
+DEFAULT_RATE_LIMIT = int(os.environ.get('DEFAULT_RATE_LIMIT', '10'))
