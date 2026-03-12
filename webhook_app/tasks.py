@@ -8,7 +8,6 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-DELIVERY_QUEUE_KEY = 'webhook:delivery_queue'
 RATE_LIMIT_KEY     = 'webhook:rate_limit'
 
 
@@ -47,12 +46,6 @@ def enqueue_delivery(delivery_id: str, user_id: str):
     r.sadd("webhook:active_users", user_id)
 
 
-def get_queue_length() -> int:
-    try:
-        return get_redis().llen(DELIVERY_QUEUE_KEY)
-    except Exception:
-        return 0
-
 
 @shared_task(name='webhook_app.tasks.drain_delivery_queue')
 def drain_delivery_queue():
@@ -85,6 +78,7 @@ def drain_delivery_queue():
             user_count = len(users)
             if user_count == 0:
                 break
+            user_index = user_index % user_count
             continue
 
         user_index += 1
