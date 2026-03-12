@@ -15,7 +15,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import deque
 
 PORT = int(os.environ.get('PORT', 9000))
-MAX_LOGS = 500
+MAX_LOGS = 1500
 
 # Thread-safe log store
 _lock = threading.Lock()

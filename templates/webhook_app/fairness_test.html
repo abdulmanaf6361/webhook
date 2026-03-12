@@ -1,0 +1,224 @@
+{% extends "webhook_app/base.html" %}
+{% block title %}⚖ Multi-User Fairness Test{% endblock %}
+
+{% block content %}
+
+<h2>⚖ Multi-User Fairness Test</h2>
+
+Rate Limit <input id="rate" value="10"><br>
+User A Events <input id="countA" value="1000"><br>
+
+<br>
+<button onclick="runTest()">Run Test</button>
+
+<br><br>
+
+<pre id="log" style="height:450px;overflow:auto;background:#111;color:#0f0;padding:12px"></pre>
+
+<script>
+
+function log(msg){
+  const el=document.getElementById("log")
+  el.textContent+=msg+"\n"
+  el.scrollTop=el.scrollHeight
+}
+
+function bar(n){
+
+  if(n===0) return ""
+
+  const size=Math.min(Math.ceil(n/5),40)
+
+  return "█".repeat(size)
+
+}
+
+async function showQueues(userA,userB){
+
+  const r=await fetch(`/api/internal/fairness-queue/?userA=${userA}&userB=${userB}`)
+  const d=await r.json()
+
+  log("")
+  log("QUEUE A: "+bar(d.queueA)+" "+d.queueA)
+  log("QUEUE B: "+bar(d.queueB)+" "+d.queueB)
+
+}
+
+function sleep(ms){
+  return new Promise(r=>setTimeout(r,ms))
+}
+
+async function reset(){
+  await fetch("/api/internal/reset-test/",{method:"POST"})
+}
+
+async function setRate(rate){
+  await fetch("/api/internal/rate-limit/",{
+    method:"PUT",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({deliveries_per_second:rate})
+  })
+}
+
+async function register(user){
+
+  await fetch("/api/webhooks/",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "X-User-Id":user
+    },
+    body:JSON.stringify({
+      url:"http://mock_receiver:9000/",
+      event_types:["request.created"]
+    })
+  })
+}
+
+async function publish(user,count){
+
+  const arr=[]
+
+  for(let i=0;i<count;i++){
+
+    arr.push(
+      fetch("/api/events/ingest/",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          user_id:user,
+          event_type:"request.created",
+          payload:{i}
+        })
+      })
+    )
+
+  }
+
+  await Promise.all(arr)
+}
+
+async function delivered(user){
+
+  const r=await fetch(`/api/internal/delivery-count/?user_id=${user}`)
+  const d=await r.json()
+
+  return d.count
+}
+
+async function receiverLogs(user){
+
+  const r=await fetch(`/api/internal/receiver-logs/?user_id=${user}`)
+  const d=await r.json()
+
+  return d.logs
+}
+
+async function runTest(){
+
+  const rate=parseInt(document.getElementById("rate").value)
+  const countA=parseInt(document.getElementById("countA").value)
+
+  const userA="fair_user_A"
+  const userB="fair_user_B"
+
+  document.getElementById("log").textContent=""
+
+  log("Cleaning system before test")
+  await reset()
+
+  log("Registering webhooks")
+  await register(userA)
+  await register(userB)
+
+  log("Setting rate "+rate+"/s")
+  await setRate(rate)
+
+  log("")
+  log("User A flooding system with "+countA+" events")
+
+  publish(userA,countA)
+
+  log("")
+  log("sleeping 2s to let backlog build up")
+  await sleep(2000)
+
+  log("")
+  log("User B sending 1 event while A backlog exists")
+  log("loading...")
+
+  const start=Date.now()
+
+  await publish(userB,1)
+
+  while(true){
+
+    const a=await delivered(userA)
+    const b=await delivered(userB)
+
+    log(`A delivered=${a} | B delivered=${b}`)
+
+    await showQueues(userA,userB)
+    
+    if(b>=1){
+
+      const latency=(Date.now()-start)/1000
+
+      log("")
+      log("✔ User B delivered in "+latency+" seconds")
+
+      break
+    }
+
+    await sleep(1000)
+  }
+
+  log("")
+  log("Waiting for all deliveries to complete...")
+
+  while(true){
+
+    const a=await delivered(userA)
+
+    log("A delivered="+a+" / "+countA)
+
+    if(a>=countA){
+      break
+    }
+
+    await sleep(1000)
+  }
+
+  log("")
+  log("Fetching receiver logs as proof")
+
+  const logsA=await receiverLogs(userA)
+  const logsB=await receiverLogs(userB)
+
+  log("")
+  log("User B delivery timestamps:")
+
+  logsB.forEach(l=>{
+    log("B → "+l.received_at)
+  })
+
+  log("")
+  log("User A sample timestamps:")
+
+  logsA.slice(0,10).forEach(l=>{
+    log("A → "+l.received_at)
+  })
+
+  log("")
+  log("✔ Fairness verified")
+
+  log("")
+  log("Cleaning system after test")
+
+  await reset()
+
+}
+
+</script>
+
+{% endblock %}

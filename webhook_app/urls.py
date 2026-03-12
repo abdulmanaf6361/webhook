@@ -30,4 +30,7 @@ urlpatterns = [
     # SSE test runner (used by /test/)
     path('api/test/run/', views.test_run_sse, name='test_run_sse'),
     path('api/internal/reset-test/', views.reset_test_data),
+
+    path("test/fairness/", views.fairness_test_view),
+    path("api/internal/fairness-queue/", views.fairness_queue_status),
 ]

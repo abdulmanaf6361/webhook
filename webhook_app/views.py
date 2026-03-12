@@ -570,3 +570,25 @@ def queue_status(request):
         "max_workers": 8,
         "rate": get_rate_limit()
     })
+
+
+def fairness_test_view(request):
+    return render(request, "webhook_app/fairness_test.html")
+
+@require_http_methods(['GET'])
+def fairness_queue_status(request):
+
+    from .tasks import get_redis
+
+    r = get_redis()
+
+    userA = request.GET.get("userA")
+    userB = request.GET.get("userB")
+
+    qa = r.llen(f"webhook:user:{userA}:queue")
+    qb = r.llen(f"webhook:user:{userB}:queue")
+
+    return JsonResponse({
+        "queueA": qa,
+        "queueB": qb
+    })
